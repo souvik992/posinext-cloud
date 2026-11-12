@@ -13,7 +13,7 @@ import { cleanup } from './helpers.ts';
 async function setUp() {
   const dir = mkdtempSync(join(tmpdir(), 'cloud-tunnel-'));
   const hub = new Hub({ dbPath: join(dir, 'hub.db') });
-  const server = createHubServer(hub, { adminKey: 'admin-key', deviceDomain: 'cloud.test', publicUrl: 'https://cloud.test' });
+  const server = createHubServer(hub, { adminKey: 'admin-key', deviceDomain: 'cloud.test', extraDeviceDomains: ['orders.old-hub.test'], publicUrl: 'https://cloud.test' });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
   const port = (server.address() as { port: number }).port;
   const base = `http://127.0.0.1:${port}`;
@@ -158,10 +158,15 @@ test('tunnel: outlet offline says so; only a paired outlet may open a tunnel; Ca
     assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=cloud.test`)).status, 200);
     assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=nobody.cloud.test`)).status, 404);
     assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=evil.example`)).status, 404);
+    // the address of a hub merged in (HUB_EXTRA_DOMAINS) keeps its device addresses
+    assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=orders.old-hub.test`)).status, 200);
+    assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=spice-garden.orders.old-hub.test`)).status, 200);
+    assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=nobody.orders.old-hub.test`)).status, 404);
     // a second connection from the same outlet replaces the first
     const a = await outlet(c.base, c.key, () => ({ status: 200, headers: { 'content-type': 'text/plain' }, body: 'first' }));
     const b = await outlet(c.base, c.key, () => ({ status: 200, headers: { 'content-type': 'text/plain' }, body: 'second' }));
     assert.equal((await device(c.port, 'spice-garden.cloud.test', '/v1/health')).body, 'second');
+    assert.equal((await device(c.port, 'spice-garden.orders.old-hub.test', '/v1/health')).body, 'second', 'through the old hub address too');
     a.ws.close();
     b.ws.close();
   } finally {

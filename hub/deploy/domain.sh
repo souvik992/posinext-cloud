@@ -96,8 +96,17 @@ EOF
   extra_list="${HUB_EXTRA_DOMAINS:-}"
   for extra in ${extra_list//,/ }; do
     cat >> "$CADDYFILE" <<EOF
-# an address of a hub merged into this cloud (deploy/merge-tiffin.sh)
+# an address of a hub merged into this cloud (deploy/merge-tiffin.sh), and its stores' device addresses
 $extra {
+  encode gzip
+  reverse_proxy 127.0.0.1:$port {
+    flush_interval -1
+  }
+}
+*.$extra {
+  tls {
+    on_demand
+  }
   encode gzip
   reverse_proxy 127.0.0.1:$port {
     flush_interval -1

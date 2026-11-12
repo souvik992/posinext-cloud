@@ -45,6 +45,11 @@ export interface HttpOptions {
    * main PC keeps a tunnel open to /v1/pos/tunnel; requests and live streams for its address go through it.
    */
   deviceDomain?: string;
+  /**
+   * Addresses of hubs merged into this cloud (HUB_EXTRA_DOMAINS, e.g. the Tiffin order hub's): <store>.<address> keeps
+   * reaching the outlet as before. New device addresses are always made on deviceDomain.
+   */
+  extraDeviceDomains?: string[];
   tunnels?: Tunnels;
   /** P6-04: outlets whose DinePOS server runs here (no main PC at the outlet). */
   hosted?: HostedOutlets;
@@ -127,12 +132,17 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   const outletUrl = (slug: string) => (deviceDomain ? `${deviceScheme}//${slug}.${deviceDomain}${devicePort}` : null);
   const demoHost = o.demo?.host ?? o.hosted;
   const demos = o.demo && demoHost ? new Demos(hub, { host: demoHost, seed: o.demo.seed, max: o.demo.max, hours: o.demo.hours, outletUrl }) : null;
+  const deviceDomains = [deviceDomain, ...(o.extraDeviceDomains ?? []).map((d) => d.trim().toLowerCase())].filter((d) => d);
+  /** The store label of a device address <store>.<one of deviceDomains>, '' when host is not one. */
+  const deviceLabel = (host: string) => {
+    const base = deviceDomains.find((d) => host.endsWith(`.${d}`));
+    return base ? host.slice(0, -(base.length + 1)) : '';
+  };
   /** The store whose device address this request is for (Host = <store>.<deviceDomain>), or null. */
   const outletOf = (req: IncomingMessage): { id: string; slug: string } | null | 'unknown' => {
-    if (!deviceDomain) return null;
+    if (!deviceDomains.length) return null;
     const host = String(req.headers.host ?? '').toLowerCase().replace(/:\d+$/, '');
-    if (!host.endsWith(`.${deviceDomain}`)) return null;
-    const label = host.slice(0, -(deviceDomain.length + 1));
+    const label = deviceLabel(host);
     if (!label || label.includes('.') || RESERVED_SLUGS.has(label)) return null; // portal.<cloud> and the like are the cloud's own
     try {
       const st = hub.store({ slug: label });
@@ -461,9 +471,9 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   /** Caddy asks before making an HTTPS certificate on demand: only the cloud's own name and its stores' addresses. */
   add('GET', '/v1/tls-ask', (c) => {
     const d = String(c.query.get('domain') ?? '').toLowerCase();
-    if (deviceDomain && d === deviceDomain) return { ok: true };
-    if (deviceDomain && d.endsWith(`.${deviceDomain}`)) {
-      const label = d.slice(0, -(deviceDomain.length + 1));
+    if (deviceDomains.includes(d)) return { ok: true };
+    {
+      const label = deviceLabel(d);
       if (label && !label.includes('.')) {
         hub.store({ slug: label }); // NOT_FOUND for an unknown store
         return { ok: true };
