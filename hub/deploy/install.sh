@@ -42,7 +42,7 @@ if [ -f /etc/dinepos-cloud.env ] && [ ! -f /etc/posinext-cloud.env ]; then
   say "DinePOS Cloud becomes PosiNext Cloud (same data and admin key)"
   systemctl stop dinepos-cloud 2>/dev/null || true
   systemctl disable dinepos-cloud 2>/dev/null || true
-  sed -e 's#/var/lib/dinepos-cloud#/var/lib/posinext-cloud#g' -e 's#dinepos-cloud\.caddy#posinext-cloud.caddy#g' /etc/dinepos-cloud.env > /etc/posinext-cloud.env
+  sed -e 's#/var/lib/dinepos-cloud#/var/lib/posinext-cloud#g' -e 's#/opt/dinepos-portal#/opt/posinext-portal#g' -e 's#dinepos-cloud\.caddy#posinext-cloud.caddy#g' -e 's#dinepos-cloud-domain#posinext-cloud-domain#g' /etc/dinepos-cloud.env > /etc/posinext-cloud.env
   chmod 600 /etc/posinext-cloud.env
   if [ -d /var/lib/dinepos-cloud ] && [ ! -e /var/lib/posinext-cloud ]; then mv /var/lib/dinepos-cloud /var/lib/posinext-cloud; fi
   if [ -d /var/backups/dinepos-cloud ] && [ ! -e /var/backups/posinext-cloud ]; then mv /var/backups/dinepos-cloud /var/backups/posinext-cloud; fi
