@@ -1,6 +1,6 @@
 // One-time import of another hub's database into PosiNext Cloud: the Tiffin order hub (QSR stores, paired POS PCs,
 // menus, orders, customers' OTPs, UrbanPiper links and orders, sales sync, website builder, brands). Both hubs come
-// from the same code (DinePOS Cloud was copied from the Tiffin hub on 2026-11-06), so their tables match; rows are
+// from the same code (PosiNext Cloud was copied from the Tiffin hub on 2026-11-06), so their tables match; rows are
 // copied column by column and never overwrite what is already here. Run by scripts/import-hub.ts (deploy/merge-tiffin.sh).
 import type { DatabaseSync } from 'node:sqlite';
 import { RESERVED_SLUGS } from './hub.ts';

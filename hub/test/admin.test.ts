@@ -19,7 +19,7 @@ test('hub admin: the admin page is served without secrets; every admin call need
     assert.match(page.headers.get('content-security-policy') ?? '', /default-src 'self'/);
     assert.equal(page.headers.get('x-frame-options'), 'DENY');
     const html = await page.text();
-    assert.match(html, /DinePOS Cloud admin/);
+    assert.match(html, /PosiNext Cloud admin/);
     assert.doesNotMatch(html, /admin-test-key/);
     assert.equal((await h.call('GET', '/v1/admin/overview')).status, 403);
     for (let i = 0; i < 10; i++) await fetch(`${h.base}/v1/admin/overview`, { headers: { 'x-admin-key': 'wrong' } });

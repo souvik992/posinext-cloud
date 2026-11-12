@@ -1,17 +1,17 @@
 #!/bin/bash
-# P8-09 (ADR-0007): the customer portal on this server. Run as root by dinepos-cloud-update, dinepos-cloud-domain and
+# P8-09 (ADR-0007): the customer portal on this server. Run as root by posinext-cloud-update, posinext-cloud-domain and
 # the installer (it lives in the repository, so updates reach it).
 #   1. downloads the newest portal build that saas-portal's CI published (GitHub release portal-build-<n>, asset
-#      portal-dist.tar.gz) into /opt/dinepos-portal (kept as it was when GitHub cannot be reached);
-#   2. sets HUB_PORTAL_DIR in /etc/dinepos-cloud.env, so the hub serves it;
+#      portal-dist.tar.gz) into /opt/posinext-portal (kept as it was when GitHub cannot be reached);
+#   2. sets HUB_PORTAL_DIR in /etc/posinext-cloud.env, so the hub serves it;
 #   3. when HUB_PORTAL_DOMAIN is set (e.g. portal.posinext.com, DNS pointing at this server), adds that site to Caddy
 #      (its own certificate); the hub serves the portal there and the API on the same address.
-# --caddy-only: step 3 only (after dinepos-cloud-domain rewrote the Caddyfile).
-# HUB_CADDY_MODE=import (alongside another hub, deploy/domain.sh): the site goes in /etc/caddy/dinepos-cloud.caddy.
-# For tests: DINEPOS_ENV, CADDY_DIR; NO_RELOAD=1 leaves reloading Caddy to the caller (domain.sh validates first).
+# --caddy-only: step 3 only (after posinext-cloud-domain rewrote the Caddyfile).
+# HUB_CADDY_MODE=import (alongside another hub, deploy/domain.sh): the site goes in /etc/caddy/posinext-cloud.caddy.
+# For tests: POSINEXT_ENV, CADDY_DIR; NO_RELOAD=1 leaves reloading Caddy to the caller (domain.sh validates first).
 set -euo pipefail
-ENV="${DINEPOS_ENV:-/etc/dinepos-cloud.env}"
-DIR=/opt/dinepos-portal
+ENV="${POSINEXT_ENV:-/etc/posinext-cloud.env}"
+DIR=/opt/posinext-portal
 REPO=souvik992/saas-portal
 . "$ENV"
 
@@ -42,18 +42,18 @@ if [ "${1:-}" != "--caddy-only" ]; then
   fi
   if ! grep -q '^HUB_PORTAL_DIR=' "$ENV"; then echo "HUB_PORTAL_DIR=$DIR" >> "$ENV"; fi
   if ! grep -q '^HUB_PORTAL_DOMAIN=' "$ENV"; then
-    printf '%s\n' '# The customer portal address (e.g. portal.posinext.com) once its DNS points at this server; then run dinepos-cloud-domain.' 'HUB_PORTAL_DOMAIN=' >> "$ENV"
+    printf '%s\n' '# The customer portal address (e.g. portal.posinext.com) once its DNS points at this server; then run posinext-cloud-domain.' 'HUB_PORTAL_DOMAIN=' >> "$ENV"
   fi
 fi
 
 # Caddy: the portal's site, between markers (replaced each time)
-if [ "${HUB_CADDY_MODE:-own}" = "import" ]; then CADDY="${CADDY_DIR:-/etc/caddy}/dinepos-cloud.caddy"; else CADDY="${CADDY_DIR:-/etc/caddy}/Caddyfile"; fi
+if [ "${HUB_CADDY_MODE:-own}" = "import" ]; then CADDY="${CADDY_DIR:-/etc/caddy}/posinext-cloud.caddy"; else CADDY="${CADDY_DIR:-/etc/caddy}/Caddyfile"; fi
 if [ -f "$CADDY" ]; then
   sed -i '/^# >>> dinepos portal/,/^# <<< dinepos portal/d' "$CADDY"
   domain=$(grep '^HUB_PORTAL_DOMAIN=' "$ENV" | tail -1 | cut -d= -f2- | tr -d '[:space:]')
   if [ -n "$domain" ]; then
     cat >> "$CADDY" <<EOF
-# >>> dinepos portal (cloud/hub/deploy/portal.sh)
+# >>> dinepos portal (hub/deploy/portal.sh)
 $domain {
   encode gzip
   reverse_proxy 127.0.0.1:${HUB_PORT:-4900}

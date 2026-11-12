@@ -145,7 +145,7 @@ export class Downloads {
 
   private async releases(repo: string): Promise<GhRelease[] | null> {
     try {
-      const headers: Record<string, string> = { accept: 'application/vnd.github+json', 'user-agent': 'dinepos-cloud', 'x-github-api-version': '2022-11-28' };
+      const headers: Record<string, string> = { accept: 'application/vnd.github+json', 'user-agent': 'posinext-cloud', 'x-github-api-version': '2022-11-28' };
       if (this.o.githubToken) headers.authorization = `Bearer ${this.o.githubToken}`;
       const res = await (this.o.fetch ?? fetch)(`https://api.github.com/repos/${repo}/releases?per_page=30`, { headers, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) throw new Error(`GitHub answered ${res.status}`);

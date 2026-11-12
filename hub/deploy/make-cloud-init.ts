@@ -1,4 +1,4 @@
-// Writes ready-to-paste cloud-init files (Oracle Cloud and AWS) with the DinePOS Cloud admin key to %USERPROFILE%\.dinepos\cloud\.
+// Writes ready-to-paste cloud-init files (Oracle Cloud and AWS) with the PosiNext Cloud admin key to %USERPROFILE%\.dinepos\cloud\.
 // The key is made once and reused on later runs (delete admin-key.txt for a new one). It stays out of the repo.
 // Usage: node hub/deploy/make-cloud-init.ts
 import { randomBytes } from 'node:crypto';

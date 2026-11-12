@@ -151,7 +151,7 @@ test('tunnel: outlet offline says so; only a paired outlet may open a tunnel; Ca
   try {
     const r = await device(c.port, 'spice-garden.cloud.test', '/v1/health');
     assert.equal(r.status, 503);
-    assert.match(JSON.parse(r.body).error.message, /not connected to DinePOS Cloud/);
+    assert.match(JSON.parse(r.body).error.message, /not connected to PosiNext Cloud/);
     assert.equal((await deviceStream(c.port, 'spice-garden.cloud.test')).status, 503);
     await assert.rejects(outlet(c.base, 'wrong-key', () => ({ status: 200, headers: {}, body: '' })));
     assert.equal((await fetch(`${c.base}/v1/tls-ask?domain=spice-garden.cloud.test`)).status, 200);

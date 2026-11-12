@@ -47,7 +47,7 @@ export class Activations {
     const hardwareId = normaliseHardwareId(input.hardwareId);
     if (!hardwareId) throw new HubError('VALIDATION', 'This PC’s hardware id was not sent correctly.', 400);
     const product = productOf(input.product);
-    if (!product) throw new HubError('VALIDATION', 'This app is not one DinePOS Cloud knows. Update it, or contact us.', 400);
+    if (!product) throw new HubError('VALIDATION', 'This app is not one PosiNext Cloud knows. Update it, or contact us.', 400);
     const app = PRODUCTS[product].app;
     const mode = input.mode === 'trial' ? 'trial' : 'signin';
     const outletName = String(input.outletName ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || `${app} outlet`;

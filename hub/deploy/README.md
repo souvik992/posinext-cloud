@@ -52,7 +52,7 @@ IPv4 address is charged after that), so Oracle above is the free-for-good choice
    - **Storage:** 20-30 GB gp3.
    - **Advanced details > User data:** paste `aws-cloud-init.yaml`.
 3. EC2 > **Elastic IPs** > Allocate, then Associate it with the instance, so the address never changes. Then over SSH
-   (`ssh -i <key>.pem ubuntu@<elastic ip>`) run `sudo dinepos-cloud-domain` once to switch to the new address.
+   (`ssh -i <key>.pem ubuntu@<elastic ip>`) run `sudo posinext-cloud-domain` once to switch to the new address.
 4. Open `https://<elastic-ip-with-dashes>.sslip.io/admin` and enter the admin key; continue as in step 5 above.
 
 Set a billing alert (Billing > Budgets) so the end of the free period is not a surprise. Everything under "Later"
@@ -60,32 +60,32 @@ works the same.
 
 ## On a server that already runs the Tiffin order hub
 
-DinePOS Cloud can share the Tiffin hub's server. The installer finds the Tiffin hub (`tiffin-hub.service`) and goes
-alongside it: DinePOS Cloud listens on port **4910** (Tiffin keeps 4900) and its Caddy sites live in
-`/etc/caddy/dinepos-cloud.caddy`, which Tiffin's `/etc/caddy/Caddyfile` only imports (one line added at the end).
+PosiNext Cloud can share the Tiffin hub's server. The installer finds the Tiffin hub (`tiffin-hub.service`) and goes
+alongside it: PosiNext Cloud listens on port **4910** (Tiffin keeps 4900) and its Caddy sites live in
+`/etc/caddy/posinext-cloud.caddy`, which Tiffin's `/etc/caddy/Caddyfile` only imports (one line added at the end).
 Tiffin's sites are never rewritten, and `deploy/domain.sh` checks the combined config with `caddy validate` before
 reloading; if Caddy does not accept it, everything is put back as it was.
 
-1. Over SSH: `curl -fsSL https://raw.githubusercontent.com/souvik992/fine-dine/main/cloud/hub/deploy/install.sh | sudo bash`
+1. Over SSH: `curl -fsSL https://raw.githubusercontent.com/souvik992/posinext-cloud/main/hub/deploy/install.sh | sudo bash`
 2. It prints the admin key (keep it) and the addresses: `https://cloud-<ip-with-dashes>.sslip.io` (admin, API, uploads)
    and `https://portal-<ip-with-dashes>.sslip.io` (the customer portal). Dashes, not dots: names under
    `*.<ip>.sslip.io` belong to the Tiffin hub's on-demand certificates, which only it approves.
-3. Own domains later: set `HUB_DOMAIN=` and `HUB_PORTAL_DOMAIN=` in `/etc/dinepos-cloud.env` (DNS pointing at the
-   server), then `sudo dinepos-cloud-domain`.
+3. Own domains later: set `HUB_DOMAIN=` and `HUB_PORTAL_DOMAIN=` in `/etc/posinext-cloud.env` (DNS pointing at the
+   server), then `sudo posinext-cloud-domain`.
 
 Not served alongside: outlet device addresses (`<store>.<domain>`, P6-02). If the Tiffin hub's Caddyfile is ever
-rewritten (e.g. `sudo tiffin-hub-domain`), run `sudo dinepos-cloud-domain` again to put the import line back.
+rewritten (e.g. `sudo tiffin-hub-domain`), run `sudo posinext-cloud-domain` again to put the import line back.
 
 ## Later (over SSH: `ssh -i <key file> ubuntu@<ip>`)
 
 | Task | Command |
 |---|---|
-| Update the hub to the latest GitHub version | `sudo dinepos-cloud-update` |
-| Use your own domain | point its DNS A record at the VM, set `HUB_DOMAIN=` in `/etc/dinepos-cloud.env`, run `sudo dinepos-cloud-domain` |
-| Logs | `journalctl -u dinepos-cloud -f` |
+| Update the hub to the latest GitHub version | `sudo posinext-cloud-update` |
+| Use your own domain | point its DNS A record at the VM, set `HUB_DOMAIN=` in `/etc/posinext-cloud.env`, run `sudo posinext-cloud-domain` |
+| Logs | `journalctl -u posinext-cloud -f` |
 | Setup log (if the page never comes up) | `sudo cat /var/log/cloud-init-output.log` |
 
-The hub database is copied daily to `/var/backups/dinepos-cloud` (14 days kept). That is on the same VM, so it does not
+The hub database is copied daily to `/var/backups/posinext-cloud` (14 days kept). That is on the same VM, so it does not
 survive losing the VM: copy it elsewhere now and then.
 
 Notes: the free tier stops idle VMs only if CPU stays under 20% for a week *and* the account is "Always Free" only;

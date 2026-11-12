@@ -9,7 +9,7 @@ import type { SalesSync } from './sync.ts';
 import { DEFAULT_PRODUCT, type ProductCode } from './products.ts';
 
 /**
- * Licence keys signed by DinePOS Cloud itself (P7-02, ADR-0006). The cloud holds its own Ed25519 key (`kid: "cloud"`);
+ * Licence keys signed by PosiNext Cloud itself (P7-02, ADR-0006). The cloud holds its own Ed25519 key (`kid: "cloud"`);
  * the DinePOS app trusts it next to the vendor's offline master key, but only for keys of at most 400 days. Every key
  * signed here is a row in licence_grant (append-only: a revoke only marks it). A grant is put in the store's licence
  * slot, so the outlet's hourly renewal (GET /v1/pos/licence) installs it; a revoke takes it out of the slot but cannot

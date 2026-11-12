@@ -156,4 +156,4 @@ export class Tunnels {
   }
 }
 
-const offline = () => new HubError('OUTLET_OFFLINE', 'The outlet’s main PC is not connected to DinePOS Cloud right now. Billing on the outlet’s own network still works.', 503);
+const offline = () => new HubError('OUTLET_OFFLINE', 'The outlet’s main PC is not connected to PosiNext Cloud right now. Billing on the outlet’s own network still works.', 503);

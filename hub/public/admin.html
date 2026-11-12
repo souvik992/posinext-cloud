@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>DinePOS Cloud admin</title>
+<title>PosiNext Cloud admin</title>
 <style>
   :root { --bg: #f6f2ec; --card: #fff; --text: #3a2a1f; --muted: #8a7b6e; --primary: #ea580c; --line: #eadfd3; --ok: #16a34a; --bad: #b91c1c; --warn: #b45309; --soft: #fffaf5; }
   * { box-sizing: border-box; }
@@ -77,7 +77,7 @@
 </head>
 <body>
 <header><div class="in">
-  <h1>DinePOS Cloud admin</h1>
+  <h1>PosiNext Cloud admin</h1>
   <nav id="nav" class="hidden">
     <a href="#orders" data-tab="orders">Orders</a>
     <a href="#stores" data-tab="stores">Stores</a>
@@ -323,7 +323,7 @@
     $('hubWarn').replaceChildren(...(hub.devOtp ? [h('div', { class: 'banner' }, 'OTP codes are shown to customers (HUB_DEV_OTP=1). Use this only for development and testing.')] : []),
       ...(!hub.smsProvider ? [h('div', { class: 'banner info' }, 'No SMS provider is set up yet: customers cannot receive OTP codes by SMS.')] : []),
       ...(health && !health.ok ? health.problems.map((p) => h('div', { class: 'banner' }, p)) : []),
-      ...(health && health.backup && health.backup.ok && !health.backup.offsite ? [h('div', { class: 'banner info' }, 'Backups stay on this server only. Set HUB_S3_BUCKET in /etc/dinepos-cloud.env (and give the server an S3 role) to copy them off it every hour.')] : []));
+      ...(health && health.backup && health.backup.ok && !health.backup.offsite ? [h('div', { class: 'banner info' }, 'Backups stay on this server only. Set HUB_S3_BUCKET in /etc/posinext-cloud.env (and give the server an S3 role) to copy them off it every hour.')] : []));
   }
 
   // ------------------------------------------------------------ orders
@@ -424,7 +424,7 @@
   const ACCOUNT_STATUS = { new: 'New', trial: 'Trial', active: 'Active', past_due: 'Payment due', suspended: 'Suspended', closed: 'Closed' };
   async function renderAccounts() {
     const { accounts, signupOpen } = await api('GET', '/v1/admin/accounts');
-    $('accountWarn').replaceChildren(...(signupOpen ? [] : [h('div', { class: 'banner info' }, 'Sign-up is closed: no email provider is set up. Set HUB_BREVO_API_KEY and HUB_MAIL_FROM in /etc/dinepos-cloud.env.')]));
+    $('accountWarn').replaceChildren(...(signupOpen ? [] : [h('div', { class: 'banner info' }, 'Sign-up is closed: no email provider is set up. Set HUB_BREVO_API_KEY and HUB_MAIL_FROM in /etc/posinext-cloud.env.')]));
     if (!accounts.length) { $('accountList').replaceChildren(h('div', { class: 'muted' }, 'No accounts yet.')); return; }
     $('accountList').replaceChildren(h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Business'), h('th', {}, 'Owner'), h('th', {}, 'Mobile'), h('th', {}, 'Status'), h('th', { class: 'num' }, 'People'), h('th', { class: 'num' }, 'Outlets'), h('th', {}, 'Signed up'), h('th', {}, ''))),
@@ -603,7 +603,7 @@
     const err = h('div', { class: 'err' }), note = h('div', { class: 'hint' });
     const path = `/v1/admin/stores/${encodeURIComponent(slug)}/hosted`;
     const run = async (fn, okText) => { err.textContent = ''; try { await fn(); if (okText) ui.hostedNote = okText; await renderStore(slug); } catch (e) { err.textContent = e.message; } };
-    if (!v.available && !v.hosted) return h('div', { class: 'card muted' }, 'This cloud has no DinePOS outlet server installed (cloud/outlet-server). Update the cloud (sudo dinepos-cloud-update).');
+    if (!v.available && !v.hosted) return h('div', { class: 'card muted' }, 'This cloud has no DinePOS outlet server installed (cloud/outlet-server). Update the cloud (sudo posinext-cloud-update).');
     if (!v.hosted) {
       return h('div', { class: 'card' },
         h('p', { style: 'margin-top:0' }, 'Run this outlet’s DinePOS in the cloud: no main PC at the outlet. Terminals, captain phones and kitchen screens connect to ', h('b', {}, v.deviceUrl || 'its cloud address'), '. Billing then needs the internet; printers need a DinePOS Print Agent at the outlet.'),

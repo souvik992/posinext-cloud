@@ -1,4 +1,4 @@
-// Starts DinePOS Cloud. Environment:
+// Starts PosiNext Cloud. Environment:
 //   HUB_PORT (default 4900), HUB_HOST (default 0.0.0.0), HUB_DATA_DIR (default ./hub-data)
 //   HUB_ADMIN_KEY      required for the admin page (/admin) and /v1/admin (stores, pairing codes, devices, settings)
 //   HUB_PUBLIC_URL     the hub's https address as shops reach it, used in connection links (else taken from the admin's browser)
@@ -76,7 +76,7 @@ const sweeper = setInterval(() => { try { hub.sweep(); } catch (e) { log.warn('s
 const demoSweeper = setInterval(() => void server.demos?.sweep().catch((e) => log.warn('demo sweep failed', String(e))), 60_000);
 demoSweeper.unref();
 const port = Number(process.env.HUB_PORT ?? 4900);
-server.listen(port, process.env.HUB_HOST ?? '0.0.0.0', () => log.info(`DinePOS Cloud on http://localhost:${port} (data: ${dir})`));
+server.listen(port, process.env.HUB_HOST ?? '0.0.0.0', () => log.info(`PosiNext Cloud on http://localhost:${port} (data: ${dir})`));
 const stop = () => { clearInterval(sweeper); server.close(); server.closeAllConnections(); void hosted.stop().finally(() => { hub.close(); process.exit(0); }); };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);

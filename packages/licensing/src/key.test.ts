@@ -27,7 +27,7 @@ test("keys made by the Fine Dine keygen (no kid) still verify, as the master key
   assert.deepEqual(v.ok && v.payload.seats, { terminals: 2, captains: 2, kds: 1 });
 });
 
-test("keys made by DinePOS Cloud still verify, and unlabelled keys pass a product check", () => {
+test("keys made by PosiNext Cloud still verify, and unlabelled keys pass a product check", () => {
   const v = verifyKey(fixtures.cloudKey, shipped, hw, { product: "fine_dine" });
   assert.equal(v.ok && v.kid, "cloud");
   assert.equal(verifyKey(fixtures.cloudKey, shipped, hw, { product: "fine_dine", requireProduct: true }).ok, false);

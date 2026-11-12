@@ -269,7 +269,7 @@ test('accounts: a sign-in stays while used (400 days idle ends it), the cookie i
     for (const p of ['/signup', '/login', '/forgot', '/app']) {
       const r = await fetch(h.base + p);
       assert.equal(r.status, 200);
-      assert.match(await r.text(), /DinePOS account/);
+      assert.match(await r.text(), /PosiNext account/);
       assert.match(r.headers.get('content-security-policy')!, /frame-ancestors 'none'/);
     }
     const reserved = await h.call('POST', '/v1/admin/stores', { admin: true, body: { slug: 'portal', name: 'Portal' } });

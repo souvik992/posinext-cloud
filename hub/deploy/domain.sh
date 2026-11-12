@@ -1,30 +1,30 @@
 #!/bin/bash
-# Points Caddy at DinePOS Cloud and sets HUB_PUBLIC_URL. Run as root by `dinepos-cloud-domain` (install.sh) after the
-# addresses in /etc/dinepos-cloud.env change. In the repository, so `dinepos-cloud-update` brings fixes.
+# Points Caddy at PosiNext Cloud and sets HUB_PUBLIC_URL. Run as root by `posinext-cloud-domain` (install.sh) after the
+# addresses in /etc/posinext-cloud.env change. In the repository, so `posinext-cloud-update` brings fixes.
 #
 # HUB_CADDY_MODE=own (default): this hub owns /etc/caddy/Caddyfile: HUB_DOMAIN (else <public-ip>.sslip.io), and
 #   <store>.<domain> for outlet devices with on-demand certificates (P6-02).
 # HUB_CADDY_MODE=import: another hub on this server (e.g. the Tiffin order hub) owns the Caddyfile. This hub's sites
-#   go in /etc/caddy/dinepos-cloud.caddy, which the Caddyfile imports (one line, added if missing): HUB_DOMAIN (else
+#   go in /etc/caddy/posinext-cloud.caddy, which the Caddyfile imports (one line, added if missing): HUB_DOMAIN (else
 #   cloud-<public-ip>.sslip.io) and HUB_PORTAL_DOMAIN (else portal-<public-ip>.sslip.io). No outlet device addresses.
 #   (Dashes, not dots: the other hub serves *.<public-ip>.sslip.io with on-demand certificates that only it approves,
 #   so cloud.<public-ip>.sslip.io would never get a certificate.)
 #   The other hub's sites are never rewritten, and a config Caddy does not accept is rolled back before reloading.
-#   If the other hub rewrites its Caddyfile later, run dinepos-cloud-domain again to put the import line back.
+#   If the other hub rewrites its Caddyfile later, run posinext-cloud-domain again to put the import line back.
 #
-# For tests: DINEPOS_ENV, CADDY_DIR, PUBLIC_IP, CADDY_VALIDATE and RELOAD override the real paths and commands.
+# For tests: POSINEXT_ENV, CADDY_DIR, PUBLIC_IP, CADDY_VALIDATE and RELOAD override the real paths and commands.
 set -euo pipefail
-ENV="${DINEPOS_ENV:-/etc/dinepos-cloud.env}"
+ENV="${POSINEXT_ENV:-/etc/posinext-cloud.env}"
 CADDY_DIR="${CADDY_DIR:-/etc/caddy}"
 CADDYFILE="$CADDY_DIR/Caddyfile"
-OURS="$CADDY_DIR/dinepos-cloud.caddy"
+OURS="$CADDY_DIR/posinext-cloud.caddy"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 validate() { # prints Caddy's complaint on failure
   if [ -n "${CADDY_VALIDATE:-}" ]; then eval "$CADDY_VALIDATE"; else caddy validate --adapter caddyfile --config "$CADDYFILE"; fi
 }
 reload() {
   if [ -n "${RELOAD:-}" ]; then eval "$RELOAD"; return; fi
-  systemctl restart dinepos-cloud
+  systemctl restart posinext-cloud
   systemctl reload caddy || systemctl restart caddy
 }
 . "$ENV"
@@ -54,7 +54,7 @@ if [ "$mode" = "import" ]; then
     [ -z "$portal" ] && { portal="portal-$d.sslip.io"; set_env HUB_PORTAL_DOMAIN "$portal"; }
   fi
   cat > "$OURS" <<EOF
-# DinePOS Cloud (cloud/hub/deploy/domain.sh). Imported by the Caddyfile, which another hub on this server owns.
+# PosiNext Cloud (hub/deploy/domain.sh). Imported by the Caddyfile, which another hub on this server owns.
 $domain {
   encode gzip
   reverse_proxy 127.0.0.1:$port {
@@ -63,7 +63,7 @@ $domain {
 }
 EOF
   touch "$CADDYFILE"
-  grep -qxF "import $OURS" "$CADDYFILE" || printf '\n# DinePOS Cloud, alongside (its sites are in that file)\nimport %s\n' "$OURS" >> "$CADDYFILE"
+  grep -qxF "import $OURS" "$CADDYFILE" || printf '\n# PosiNext Cloud, alongside (its sites are in that file)\nimport %s\n' "$OURS" >> "$CADDYFILE"
 else
   domain="${HUB_DOMAIN:-}"
   [ -z "$domain" ] && domain="$(ip_dashed).sslip.io"
@@ -91,10 +91,24 @@ $domain {
   }
 }
 EOF
+  # HUB_EXTRA_DOMAINS (comma-separated, no spaces): addresses this cloud also answers, e.g. the Tiffin order hub's after
+  # merge-tiffin.sh, so its paired POS PCs, customers' ordering pages and UrbanPiper webhooks keep working.
+  extra_list="${HUB_EXTRA_DOMAINS:-}"
+  for extra in ${extra_list//,/ }; do
+    cat >> "$CADDYFILE" <<EOF
+# an address of a hub merged into this cloud (deploy/merge-tiffin.sh)
+$extra {
+  encode gzip
+  reverse_proxy 127.0.0.1:$port {
+    flush_interval -1
+  }
+}
+EOF
+  done
 fi
 
 # the customer portal's site (portal.sh appends it to this hub's Caddy file)
-DINEPOS_ENV="$ENV" CADDY_DIR="$CADDY_DIR" NO_RELOAD=1 bash "$HERE/portal.sh" --caddy-only || true
+POSINEXT_ENV="$ENV" CADDY_DIR="$CADDY_DIR" NO_RELOAD=1 bash "$HERE/portal.sh" --caddy-only || true
 
 if ! out=$(validate 2>&1); then
   restore

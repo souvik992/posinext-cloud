@@ -4,7 +4,7 @@ import type { Hub } from './hub.ts';
 import type { HostedOutlets } from './hosted.ts';
 
 /**
- * DinePOS Cloud monitoring: what an operator must know without looking.
+ * PosiNext Cloud monitoring: what an operator must know without looking.
  *   - a hosted outlet's DinePOS server down for more than a minute (its devices cannot bill)
  *   - backups failing, or not run for over two hours (deploy/backup.sh writes backup-status.json every hour)
  * GET /health/deep reports them (503 while any is open), for an uptime service such as UptimeRobot; the admin page
@@ -109,13 +109,13 @@ export class Monitor {
       const last = this.alerted.get(p);
       if (last === undefined || now - last >= this.o.repeatMs) {
         this.alerted.set(p, now);
-        await this.send(`⚠️ DinePOS Cloud: ${p}`);
+        await this.send(`⚠️ PosiNext Cloud: ${p}`);
       }
     }
     for (const p of [...this.alerted.keys()]) {
       if (open.has(p)) continue;
       this.alerted.delete(p);
-      await this.send(`✅ DinePOS Cloud: resolved: ${p}`);
+      await this.send(`✅ PosiNext Cloud: resolved: ${p}`);
     }
     return r;
   }

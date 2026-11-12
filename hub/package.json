@@ -1,5 +1,5 @@
 {
-  "name": "dinepos-cloud",
+  "name": "posinext-cloud",
   "version": "0.1.0",
   "private": true,
   "description": "Online order hub for DinePOS (fine dine): stores, paired POS devices, customer orders, live POS event streams. Zero runtime dependencies (Node 24, node:sqlite).",

@@ -1,4 +1,4 @@
-# DinePOS Cloud
+# PosiNext Cloud
 
 The cloud service for **DinePOS (fine dine) only**: its own server, its own data, its own admin key. It is separate
 from the Tiffin POS hub, and you install it on its own AWS server. It started as a copy of the Tiffin order hub
@@ -27,12 +27,12 @@ shapes, checks, prices; the pricing code is in `../core/`).
    SSH (22), HTTP (80) and HTTPS (443). Give it an **Elastic IP** so the address never changes.
 2. **Connect** (`ssh -i <key>.pem ubuntu@<elastic ip>`) and run:
    ```
-   curl -fsSL https://raw.githubusercontent.com/souvik992/fine-dine/main/cloud/hub/deploy/install.sh | sudo bash
+   curl -fsSL https://raw.githubusercontent.com/souvik992/posinext-cloud/main/hub/deploy/install.sh | sudo bash
    ```
-   It installs Node 24 and Caddy (free HTTPS), runs DinePOS Cloud as the `dinepos-cloud` service, and prints the
+   It installs Node 24 and Caddy (free HTTPS), runs PosiNext Cloud as the `posinext-cloud` service, and prints the
    address (`https://<ip>.sslip.io`) and the **admin key**. Save the key.
 3. **Own domain (optional):** point a DNS A record (e.g. `cloud.yourbrand.in`) at the Elastic IP, set
-   `HUB_DOMAIN=cloud.yourbrand.in` in `/etc/dinepos-cloud.env`, then run `sudo dinepos-cloud-domain`.
+   `HUB_DOMAIN=cloud.yourbrand.in` in `/etc/posinext-cloud.env`, then run `sudo posinext-cloud-domain`.
 4. **Add an outlet:** open `https://<address>/admin`, enter the admin key, and create a store (for example
    `spice-garden-indiranagar`). Copy its **connection link**.
 5. **Connect DinePOS:** on the outlet's main PC, go to **Settings › Online orders › Order hub**, paste the connection
@@ -41,10 +41,10 @@ shapes, checks, prices; the pricing code is in `../core/`).
 
 | Task | Command (on the server) |
 |---|---|
-| Update to the latest version from GitHub | `sudo dinepos-cloud-update` |
-| Logs | `journalctl -u dinepos-cloud -f` |
-| Settings (admin key, domain, port) | `/etc/dinepos-cloud.env` |
-| Data | `/var/lib/dinepos-cloud` (copied daily to `/var/backups/dinepos-cloud`, 14 days kept) |
+| Update to the latest version from GitHub | `sudo posinext-cloud-update` |
+| Logs | `journalctl -u posinext-cloud -f` |
+| Settings (admin key, domain, port) | `/etc/posinext-cloud.env` |
+| Data | `/var/lib/posinext-cloud` (copied daily to `/var/backups/posinext-cloud`, 14 days kept) |
 
 More detail, including Oracle Cloud and ready-made cloud-init files, is in `deploy/README.md`.
 
@@ -69,7 +69,7 @@ OTP codes are shown on the demo page in development. In production an SMS provid
 ## Run it for real
 
 ```
-HUB_ADMIN_KEY=<long random secret> HUB_DATA_DIR=/var/lib/dinepos-cloud npm start
+HUB_ADMIN_KEY=<long random secret> HUB_DATA_DIR=/var/lib/posinext-cloud npm start
 ```
 
 | Variable | Meaning |
@@ -194,11 +194,11 @@ Sign up (business name, your name, email, mobile, password) → a 6-digit code b
 | `GET /v1/admin/accounts` (admin key) | the newest 500 accounts |
 
 **Email** (`src/mailer.ts`): Brevo, free plan. Set `HUB_BREVO_API_KEY`, `HUB_MAIL_FROM` (a sender verified in Brevo)
-and optionally `HUB_MAIL_FROM_NAME` in `/etc/dinepos-cloud.env`. Without them, sign-up is **closed**. For development,
+and optionally `HUB_MAIL_FROM_NAME` in `/etc/posinext-cloud.env`. Without them, sign-up is **closed**. For development,
 `HUB_DEV_MAIL=1` (and `npm run dev`) writes the codes to the log instead.
 
 **Email without Brevo: a mailbox's SMTP server** (e.g. Zoho Mail for `support@posinext.com`). In
-`/etc/dinepos-cloud.env` set `HUB_SMTP_HOST=smtppro.zoho.in`, `HUB_SMTP_USER=support@posinext.com`,
+`/etc/posinext-cloud.env` set `HUB_SMTP_HOST=smtppro.zoho.in`, `HUB_SMTP_USER=support@posinext.com`,
 `HUB_SMTP_PASS=<Zoho app password>` and `HUB_MAIL_FROM_NAME=POSINEXT` (port 465 with TLS; `HUB_SMTP_PORT` changes it;
 the sender is `HUB_MAIL_FROM`, default the user). Brevo is used instead when its settings are there.
 
@@ -209,8 +209,8 @@ vendor's master key, but only for keys of at most 400 days. Signing, the key for
 licensing library (`packages/licensing`); keys say
 `product: "fine_dine"`, which the app accepts like keys without it.
 - **Install the key once** (the private key is in the vendor's keygen folder:
-  `keys/dinepos-cloud-signing-private.pem`). Copy it to the server, then run
-  `sudo -u dinepos-cloud npm run admin -- cloud-key import /path/to/dinepos-cloud-signing-private.pem`, delete the
+  `keys/posinext-cloud-signing-private.pem`). Copy it to the server, then run
+  `sudo -u posinext-cloud npm run admin -- cloud-key import /path/to/posinext-cloud-signing-private.pem`, delete the
   copied file, and restart the service. `npm run admin -- cloud-key public` must print the same value as
   `CLOUD_LICENCE_PUBLIC_KEY` in `apps/server/src/licence/public-key.ts`.
 - Every key signed here is a `licence_grant` row (append-only: only a revoke can be recorded, once). A grant is put in
@@ -269,18 +269,18 @@ for **QSR** the Tiffin POS installer and the ODS add-on, always the newest build
 ## Customer portal hosting (P8-09)
 
 The portal is built by souvik992/saas-portal's CI on every push to main (release `portal-build-<n>`, file
-`portal-dist.tar.gz`). `deploy/portal.sh` (run by `dinepos-cloud-update`, `dinepos-cloud-domain` and the installer)
-fetches the newest build into `/opt/dinepos-portal`, sets `HUB_PORTAL_DIR`, and adds the portal's site to Caddy. The
+`portal-dist.tar.gz`). `deploy/portal.sh` (run by `posinext-cloud-update`, `posinext-cloud-domain` and the installer)
+fetches the newest build into `/opt/posinext-portal`, sets `HUB_PORTAL_DIR`, and adds the portal's site to Caddy. The
 hub (`src/portal.ts`) serves it on `HUB_PORTAL_DOMAIN`; its `/v1/...` calls reach the hub on the same address.
 
 Moving portal.posinext.com from Lovable to this server (once):
 1. Merge saas-portal's portal into main, so its CI publishes the first `portal-build`.
-2. On the server, once: `sudo bash /opt/dinepos/cloud/hub/deploy/install.sh` (installs the new update script); later
-   updates are `sudo dinepos-cloud-update`.
-3. Email must work for sign-up codes: `HUB_BREVO_API_KEY` and `HUB_MAIL_FROM` in `/etc/dinepos-cloud.env`.
+2. On the server, once: `sudo bash /opt/posinext-hub/deploy/install.sh` (installs the new update script); later
+   updates are `sudo posinext-cloud-update`.
+3. Email must work for sign-up codes: `HUB_BREVO_API_KEY` and `HUB_MAIL_FROM` in `/etc/posinext-cloud.env`.
 4. Cloudflare DNS for posinext.com: replace the `portal` record (Lovable's) with an **A** record to this server's IP,
    **DNS only** (grey cloud) so Caddy can get the certificate. Remove the custom domain from the Lovable project.
-5. In `/etc/dinepos-cloud.env` set `HUB_PORTAL_DOMAIN=portal.posinext.com`, then `sudo dinepos-cloud-domain`.
+5. In `/etc/posinext-cloud.env` set `HUB_PORTAL_DOMAIN=portal.posinext.com`, then `sudo posinext-cloud-domain`.
    `https://portal.posinext.com` then serves the portal; until the first build is fetched it says it is being installed.
 
 ## Customer portal: licences, support, announcements, knowledge base, status (P8-07, P8-08)
@@ -291,7 +291,7 @@ The portal (souvik992/saas-portal `cloud/saas-web`; ADR-0007) reads all of this 
 - Tickets (`src/support.ts`): `GET|POST /v1/account/tickets`, `GET /v1/account/tickets/<id>`, `POST .../reply`,
   `POST .../close`. Numbered from #1001; private to the account. Admin page › **Support**: tickets waiting for an
   answer first; an answer is emailed to the customer who opened the ticket (`/v1/admin/tickets...`). Set
-  `HUB_SUPPORT_NOTIFY_TO=support@posinext.com` in `/etc/dinepos-cloud.env` (needs Brevo or SMTP email) and each new
+  `HUB_SUPPORT_NOTIFY_TO=support@posinext.com` in `/etc/posinext-cloud.env` (needs Brevo or SMTP email) and each new
   ticket and each customer reply is emailed there too; replying to that email goes to the customer by email only, so
   answer on the admin page for it to show in the portal.
 - Announcements: `GET /v1/announcements` (`?product=`), written on the admin page (`/v1/admin/announcements`).
@@ -302,7 +302,7 @@ The portal (souvik992/saas-portal `cloud/saas-web`; ADR-0007) reads all of this 
 
 The posinext.com website (a static site; souvik992/saas-portal `site/`) posts its demo form to
 `POST /v1/demo-requests` on this hub (CORS open, 10 a minute per address, a hidden field drops bots). Each request is
-saved and emailed to `HUB_DEMO_REQUEST_TO` (needs Brevo or SMTP email, above; a reply goes to the restaurant's email) in `/etc/dinepos-cloud.env`. That address
+saved and emailed to `HUB_DEMO_REQUEST_TO` (needs Brevo or SMTP email, above; a reply goes to the restaurant's email) in `/etc/posinext-cloud.env`. That address
 lives only on the server: it is never in the website or in any response. A request whose email fails is still kept;
 list them with `GET /v1/admin/demo-requests` (admin key).
 
@@ -479,7 +479,7 @@ outlet PC's LAN address, but from anywhere.
   and live stream for the outlet's address goes down it (`src/tunnel.ts`; `src/ws.ts` is the small WebSocket server).
   Nothing is stored here.
 - Caddy makes each outlet address's HTTPS certificate on demand, only after `/v1/tls-ask` confirms the store (see the
-  Caddyfile written by `dinepos-cloud-domain`). With your own domain, add a wildcard DNS record `*.cloud.yourbrand.in`
+  Caddyfile written by `posinext-cloud-domain`). With your own domain, add a wildcard DNS record `*.cloud.yourbrand.in`
   pointing at the server too.
 - `HUB_DEVICE_DOMAIN` overrides the base name (default: the host of `HUB_PUBLIC_URL`).
 - If the PC is not connected, devices get a clear 503: the outlet's own network still works.
@@ -503,15 +503,15 @@ outlet (P6-03).
    printers, with the server address `https://<store>.<cloud>`.
 
 - The server it runs is `cloud/outlet-server` (`HUB_OUTLET_SERVER` overrides). Rebuild it with
-  `npm run bundle:cloud -w @dinepos/server` whenever DinePOS changes, and commit it; `dinepos-cloud-update` brings it here.
+  `npm run bundle:cloud -w @dinepos/server` whenever DinePOS changes, and commit it; `posinext-cloud-update` brings it here.
 - **Stop running in the cloud** stops the outlet's server and keeps its data. Running it again carries on.
 - Back up `<HUB_DATA_DIR>/outlets` with the cloud's data (the daily copy covers the cloud's own database only). Each
   outlet's DinePOS server also keeps its own backups in its data folder.
 
 ## Backups off the server
 
-Every hour, `deploy/backup.sh` (run by `/etc/cron.hourly/dinepos-cloud-backup`) does three things:
-- copies the cloud's own database into `/var/backups/dinepos-cloud`, one copy a day;
+Every hour, `deploy/backup.sh` (run by `/etc/cron.hourly/posinext-cloud-backup`) does three things:
+- copies the cloud's own database into `/var/backups/posinext-cloud`, one copy a day;
 - copies each hosted outlet's newest DinePOS backup into `.../outlets/<store id>/`;
 - keeps 14 days of copies there.
 
@@ -520,22 +520,22 @@ A copy on the same server is lost with the server. To copy them off it:
 1. Create an S3 bucket (for example `yourbrand-dinepos-backups`, in the same region, with public access blocked).
 2. **EC2 › the instance › Actions › Security › Modify IAM role:** give it a role whose policy allows `s3:PutObject`,
    `s3:ListBucket` and `s3:GetObject` on that bucket.
-3. In `/etc/dinepos-cloud.env`, set `HUB_S3_BUCKET=yourbrand-dinepos-backups`.
+3. In `/etc/posinext-cloud.env`, set `HUB_S3_BUCKET=yourbrand-dinepos-backups`.
 
-From the next hour, everything is copied to `s3://<bucket>/dinepos-cloud/`, so losing the server loses at most an hour.
+From the next hour, everything is copied to `s3://<bucket>/posinext-cloud/`, so losing the server loses at most an hour.
 The result of each run is in `<data>/backup-status.json`. The admin page warns while backups fail, or stay on the server
 only. For extra safety, also turn on daily EBS snapshots (**EC2 › Lifecycle Manager**).
 
 Servers installed before this change: run the one-line installer again. It keeps the key, the settings and the data, adds
 the hourly job and the AWS CLI, and removes the old daily job. Then add the `HUB_S3_BUCKET=` and `HUB_ALERT_WEBHOOK=`
-lines to `/etc/dinepos-cloud.env` yourself.
+lines to `/etc/posinext-cloud.env` yourself.
 
 ## Monitoring and alerts
 
 - `GET /health/deep` answers 503 while a hosted outlet is down (more than a minute) or backups fail or have not run for
   two hours. It names the problems, and lists store addresses only, no data. Point a free uptime service at it, for
   example UptimeRobot with an HTTP(s) monitor on `https://<cloud>/health/deep`, to get an email or SMS when it is not 200.
-- `HUB_ALERT_WEBHOOK=<Slack, Discord or Google Chat webhook>` in `/etc/dinepos-cloud.env` posts each new problem, a
+- `HUB_ALERT_WEBHOOK=<Slack, Discord or Google Chat webhook>` in `/etc/posinext-cloud.env` posts each new problem, a
   reminder every 6 hours while it lasts, and "resolved" when it is fixed (`src/monitor.ts`).
 - The admin page shows the same problems at the top.
 

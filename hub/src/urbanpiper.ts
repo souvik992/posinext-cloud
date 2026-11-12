@@ -14,7 +14,7 @@ import { MOBILE_RE, normaliseMobile } from '../../contract/src/validate.ts';
  * Swiggy and Zomato through UrbanPiper (https://api-docs.urbanpiper.com/downstream). The hub admin saves the one
  * UrbanPiper account in Hub settings (Atlas business: API username, API key, Biz ID; webhooks), and per store its id there,
  * city, address, platforms and packaging charge. Then:
- *   in    UrbanPiper calls POST /v1/urbanpiper/<bizId> (header x-dinepos-token) for new orders, status changes from the
+ *   in    UrbanPiper calls POST /v1/urbanpiper/<bizId> (header x-posinext-token) for new orders, status changes from the
  *         platform (cancelled, picked up, delivered), rider updates, and the results of what we sent. A new order becomes
  *         a hub order (channel swiggy/zomato, priced from the store's published menu like the POS bill) and goes to the
  *         POS over its event stream like any other order.
@@ -36,7 +36,7 @@ const EVENT_CODE: Record<string, string> = { '18': 'order', '60008': 'status', '
 export const TOKEN_HEADER = 'x-posinext-token';
 /** Header names the hubs merged into PosiNext Cloud registered their webhooks with, still accepted until the order
  * links are set up again here (Hub settings > Set up order links). */
-export const LEGACY_TOKEN_HEADERS = ['x-dinepos-token', 'x-tiffin-token'];
+export const LEGACY_TOKEN_HEADERS = ['x-posinext-token', 'x-tiffin-token'];
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const OTHER_CATEGORY = { ref_id: 'dinepos-other', name: 'Other' };
 /** Our reject reasons as UrbanPiper reason codes (order-status-update). An item that is out of stock is sent as

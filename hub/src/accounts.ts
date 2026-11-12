@@ -341,10 +341,10 @@ export class Accounts {
         sends = CASE WHEN ? THEN 1 ELSE email_code.sends + 1 END, window_start = CASE WHEN ? THEN excluded.window_start ELSE email_code.window_start END`,
     userId, purpose, codeHash(userId, purpose, code), now + CODE_MS, now, fresh ? 1 : 0, fresh ? 1 : 0);
     const text = purpose === 'verify'
-      ? `Your DinePOS verification code is ${code}.\n\nIt works for 10 minutes. If you did not sign up for DinePOS, ignore this email.`
-      : `Your DinePOS password reset code is ${code}.\n\nIt works for 10 minutes. If you did not ask to reset your password, ignore this email: your password stays the same.`;
+      ? `Your PosiNext verification code is ${code}.\n\nIt works for 10 minutes. If you did not sign up for PosiNext, ignore this email.`
+      : `Your PosiNext password reset code is ${code}.\n\nIt works for 10 minutes. If you did not ask to reset your password, ignore this email: your password stays the same.`;
     try {
-      await this.o.mailer.send({ to: email, subject: purpose === 'verify' ? `${code} is your DinePOS code` : 'Reset your DinePOS password', text });
+      await this.o.mailer.send({ to: email, subject: purpose === 'verify' ? `${code} is your PosiNext code` : 'Reset your PosiNext password', text });
     } catch (e) {
       this.o.log?.warn('email not sent', { email, error: String(e) });
       throw new HubError('EMAIL_FAILED', 'We could not send the email. Please try again in a minute.', 502);

@@ -42,7 +42,7 @@ try {
     copyFileSync(b, to); chmodSync(to, 0o600);
     console.log(`Licence signing key installed at ${to}.
 Public key: ${publicKeyBase64(key)}
-It must equal CLOUD_LICENCE_PUBLIC_KEY in apps/server/src/licence/public-key.ts. Restart the cloud: sudo systemctl restart dinepos-cloud`);
+It must equal CLOUD_LICENCE_PUBLIC_KEY in apps/server/src/licence/public-key.ts. Restart the cloud: sudo systemctl restart posinext-cloud`);
   } else if (cmd === 'cloud-key' && a === 'public') {
     const f = process.env.HUB_LICENCE_SIGNING_KEY_FILE || join(dir, 'licence-signing-key.pem');
     console.log(existsSync(f) ? publicKeyBase64(loadSigningKey(f)) : `No signing key at ${f}.`);

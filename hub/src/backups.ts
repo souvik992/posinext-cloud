@@ -6,7 +6,7 @@ import { HubError } from './hub.ts';
 import type { DeviceRef } from './hub.ts';
 
 /**
- * Online backups ("DinePOS Cloud backup server"): each paired POS uploads its verified, gzipped database backups and the menu
+ * Online backups ("PosiNext Cloud backup server"): each paired POS uploads its verified, gzipped database backups and the menu
  * photos they use. Files live on disk, one folder per store, never in the hub database:
  *   <backupDir>/<storeId>/<name>.db.gz (+ .sha256)   and   <backupDir>/<storeId>/images/<sha256>.<ext>
  * Uploads are streamed to a temporary file, checked against the SHA-256 the POS sent, then renamed into place, so a

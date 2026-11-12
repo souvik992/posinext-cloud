@@ -147,7 +147,7 @@ export class Hub {
 
   createStore(slug: string, name: string) {
     if (!SLUG.test(slug)) throw new HubError('VALIDATION', 'The store address must be 3-41 lowercase letters, digits or dashes.');
-    if (RESERVED_SLUGS.has(slug)) throw new HubError('SLUG_TAKEN', 'That address is kept for DinePOS itself. Choose another.', 409);
+    if (RESERVED_SLUGS.has(slug)) throw new HubError('SLUG_TAKEN', 'That address is kept for PosiNext Cloud itself. Choose another.', 409);
     if (!name.trim() || name.length > 80) throw new HubError('VALIDATION', 'Enter the store name.');
     if (one(this.db, 'SELECT 1 FROM store WHERE slug = ? UNION ALL SELECT 1 FROM brand WHERE slug = ?', slug, slug)) throw new HubError('SLUG_TAKEN', 'That address is already used by a store or a brand.', 409);
     const id = randomUUID();

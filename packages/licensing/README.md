@@ -1,7 +1,7 @@
 # @dinepos/licensing
 
 Licence keys for every product on the platform: a JSON payload signed with an Ed25519 private key, checked offline
-by the product with the public key. No runtime dependencies (Node's `crypto` only). Used by DinePOS Cloud for every product (ADR-0007).
+by the product with the public key. No runtime dependencies (Node's `crypto` only). Used by PosiNext Cloud for every product (ADR-0007).
 
 The format is the one the DinePOS app has shipped since its first licence, so every key issued before this
 module still verifies, and keys made here verify in the shipped app (`src/test-fixtures/compat.json` holds keys and
@@ -58,6 +58,6 @@ the end, trial keys 2 days; 7 days of grace after it).
 
 ## Develop
 
-`npm run test -w @dinepos/licensing` (vitest). DinePOS Cloud (`cloud/hub`) imports `src/index.ts` directly: Node runs
+`npm run test -w @dinepos/licensing` (vitest). PosiNext Cloud (`cloud/hub`) imports `src/index.ts` directly: Node runs
 the source, so relative imports end in `.ts` and the code uses only erasable TypeScript (no enums, no parameter
 properties). `tsc -b` writes `dist/` for workspace packages that import `@dinepos/licensing`.
