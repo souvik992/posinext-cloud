@@ -135,7 +135,7 @@ export function openHubDb(path: string): Db {
   if (!storeCols.has('paused_reason')) db.exec('ALTER TABLE store ADD COLUMN paused_reason TEXT'); // set: paused by the hub admin
   // the store's website design (src/site.ts): website_json is the published copy, site_draft_json what the builder saved
   if (!storeCols.has('website_json')) db.exec('ALTER TABLE store ADD COLUMN website_json TEXT');
-  for (const [col, type] of [['site_draft_json', 'TEXT'], ['site_published_at', 'INTEGER'], ['site_draft_at', 'INTEGER'], ['site_password_hash', 'TEXT']]) {
+  for (const [col, type] of [['site_draft_json', 'TEXT'], ['site_published_at', 'INTEGER'], ['site_draft_at', 'INTEGER'], ['site_password_hash', 'TEXT'], ['menu_at', 'INTEGER']]) {
     if (!storeCols.has(col!)) db.exec(`ALTER TABLE store ADD COLUMN ${col} ${type}`);
   }
   // P8-06 (ADR-0007): the products an account chose (QSR, Fine Dine or both); accounts made before chose Fine Dine

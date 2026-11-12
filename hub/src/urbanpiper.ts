@@ -255,7 +255,11 @@ export class UrbanPiper {
   private refusal(status: number, json: any): string {
     if (status === 401 || status === 403) return 'UrbanPiper refused the API username, API key or Biz ID. Check them (the test and live accounts have different keys).';
     const m = str(json?.message) || str(json?.error?.message) || str(json?.error) || str(json?.detail);
-    return `UrbanPiper refused (${status})${m ? `: ${m.slice(0, 300)}` : '.'}`;
+    const hint = /invalid location reference/i.test(m)
+      ? ' UrbanPiper does not have this store yet. Press Send store details, wait until the activity list shows them accepted (a few minutes), then send the menu.'
+      : '';
+    const details = refusalDetails(json, m);
+    return `UrbanPiper refused (${status})${m ? `: ${m.slice(0, 300)}` : '.'}${details ? ` Details: ${details}` : ''}${hint}`;
   }
   /** An admin action now: ok with UrbanPiper's message, or the reason in words. storeId null: the account's activity. */
   private async now(storeId: string | null, kind: string, method: string, path: string, body?: unknown): Promise<{ ok: boolean; message: string; json: any }> {
@@ -318,7 +322,7 @@ export class UrbanPiper {
 
   storeBody(s: StoreRow, l: LinkRow, m: PublishedMenu) {
     const sv = m.serviceability, z = sv.zones[0];
-    const timings = DAYS.map((day, d) => ({ day, slots: (sv.hours[String(d) as keyof typeof sv.hours] ?? []).map((x) => ({ start_time: `${x.open}:00`, end_time: `${x.close}:00` })) })).filter((d) => d.slots.length);
+    const timings = upTimings(sv.hours);
     return {
       stores: [{
         ref_id: l.location_ref, name: m.storeName || s.name, city: l.city, address: l.address || sv.location?.label || '', ...(l.phone ? { contact_phone: l.phone } : {}),
@@ -526,7 +530,7 @@ export class UrbanPiper {
   }
 
   private note(storeId: string | null, dir: 'in' | 'out', kind: string, ok: boolean, text: string) {
-    exec(this.hub.db, 'INSERT INTO up_log (store_id, at, dir, kind, ok, text) VALUES (?,?,?,?,?,?)', storeId, this.hub.now(), dir, kind.slice(0, 120), ok ? 1 : 0, text.slice(0, 500));
+    exec(this.hub.db, 'INSERT INTO up_log (store_id, at, dir, kind, ok, text) VALUES (?,?,?,?,?,?)', storeId, this.hub.now(), dir, kind.slice(0, 120), ok ? 1 : 0, text.slice(0, 1500));
     exec(this.hub.db, 'DELETE FROM up_log WHERE store_id IS ? AND id <= (SELECT id FROM up_log WHERE store_id IS ? ORDER BY id DESC LIMIT 1 OFFSET 500)', storeId, storeId);
   }
 
@@ -700,13 +704,62 @@ const ALCOHOL = /\b(beer|rum|whisky|whiskey|vodka|wine|gin|tequila|brandy|cigare
 /** The published menu as UrbanPiper's Add/Update Menu body for one store, with the platforms' rules checked
  * (aggregator-constraints/swiggy and /zomato). POS prices that include GST are sent without it, since the platforms add
  * the GST from the tax entries: the customer then pays the POS price. */
+/** The store's opening times in UrbanPiper's shape. UrbanPiper wants every slot to start and end on the same day; the
+ * POS allows a slot that closes at or before it opens (it runs past midnight), so that one is split: the rest of the day,
+ * then the next morning. A slot closing at 00:00 ends at 23:59:59. Touching or overlapping slots of a day are joined. */
+export function upTimings(hours: Partial<Record<string, Array<{ open: string; close: string }>>>) {
+  const min = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const END = 24 * 60;
+  const days: Array<Array<[number, number]>> = DAYS.map(() => []);
+  for (let d = 0; d < 7; d++) {
+    for (const s of hours[String(d)] ?? []) {
+      const a = min(s.open), b = min(s.close);
+      if (b > a) days[d]!.push([a, b]);
+      else { days[d]!.push([a, END]); if (b > 0) days[(d + 1) % 7]!.push([0, b]); }
+    }
+  }
+  const time = (m: number) => (m >= END ? '23:59:59' : `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:00`);
+  return DAYS.map((day, d) => {
+    const joined: Array<[number, number]> = [];
+    for (const [a, b] of days[d]!.sort((x, y) => x[0] - y[0])) {
+      const last = joined[joined.length - 1];
+      if (last && a <= last[1]) last[1] = Math.max(last[1], b); else joined.push([a, b]);
+    }
+    return { day, slots: joined.map(([a, b]) => ({ start_time: time(a), end_time: time(b) })) };
+  }).filter((d) => d.slots.length);
+}
+
+/** What else UrbanPiper said in a refusal (its menu "report", field errors): up to 8 short lines, besides the main message. */
+export function refusalDetails(json: unknown, main: string): string {
+  const out: string[] = [];
+  const walk = (v: unknown, path: string, depth: number) => {
+    if (depth > 8 || out.length >= 8) return;
+    if (typeof v === 'string' || typeof v === 'number') {
+      const t = String(v).trim();
+      if (!t || t === main || /^(error|success|failed)$/i.test(t) || /^(status|code|err_code)$/.test(path.split('.').pop() ?? '')) return;
+      const line = `${path ? `${path}: ` : ''}${t}`.slice(0, 200);
+      if (!out.includes(line)) out.push(line);
+      return;
+    }
+    if (Array.isArray(v)) { v.forEach((x, i) => walk(x, path ? `${path}[${i}]` : `[${i}]`, depth + 1)); return; }
+    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { if (depth === 0 && k === 'message') continue; walk(x, path ? `${path}.${k}` : k, depth + 1); }
+  };
+  walk(json, '', 0);
+  return out.join('; ');
+}
+
 export function buildMenu(m: PublishedMenu, platforms: Platform[], packaging: Packaging, imageUrl: (name: string) => string | null) {
   const warnings: string[] = [], errors: string[] = [];
   const off = platforms.filter((p) => !m.options.channels[p]);
   if (off.length) warnings.push(`${off.map((p) => NAME[p]).join(' and ')} ${off.length > 1 ? 'are' : 'is'} switched off in the POS (Settings > Online orders > Sales channels), so no items are listed there.`);
   const listed = (it: MenuItem) => platforms.filter((p) => (it.channels ? it.channels.includes(p) : m.options.channels[p]));
   const items = m.items.filter((it) => listed(it).length);
-  if (!items.length) errors.push('No menu items are listed for Swiggy or Zomato. In the POS, switch the channels on (Settings > Online orders) and choose their items.');
+  if (!items.length) {
+    const sent = `The hub has the POS settings of menu version ${m.version}; if you already changed this in the POS, press Save there again and check that the version on this page goes up.`;
+    errors.push(off.length === platforms.length
+      ? `${off.map((p) => NAME[p]).join(' and ')} ${off.length > 1 ? 'are' : 'is'} switched off in the POS. Switch ${off.length > 1 ? 'them' : 'it'} on in Settings > Online orders > Sales channels. ${sent}`
+      : `No menu items are chosen for ${platforms.filter((p) => !off.includes(p)).map((p) => NAME[p]).join(' or ')} in the POS. Choose them in Settings > Online orders > Menu sync. ${sent}`);
+  }
   // UrbanPiper has GST taxes only (CGST, SGST): GST is taken out of GST-inclusive prices and added back by the platform as
   // taxes; cess stays inside the price. Either way the customer pays what the POS bill says.
   const exTax = (p: number, it: Pick<MenuItem, 'priceIncludesTax' | 'rateBp' | 'cessBp'>) => (it.priceIncludesTax ? Math.round(p * (10000 + it.cessBp) / (10000 + it.rateBp + it.cessBp)) : Math.round(p * (10000 + it.cessBp) / 10000));
@@ -734,9 +787,10 @@ export function buildMenu(m: PublishedMenu, platforms: Platform[], packaging: Pa
     option_groups: groups.map((g, i) => ({ ref_id: g.id, title: g.name, min_selectable: g.minSelect, max_selectable: g.maxSelect, active: true, sort_order: i + 1, item_ref_ids: items.filter((it) => it.modifierGroupIds.includes(g.id)).map((it) => it.id) })),
     options: [...new Map(groups.flatMap((g) => g.modifiers.map((x) => [x.id, { x, gids: groups.filter((gg) => gg.modifiers.some((y) => y.id === x.id)).map((gg) => gg.id), g }] as const))).values()]
       .map(({ x, gids, g }, i) => ({ ref_id: x.id, title: x.name, price: rupees(exTax(x.price, firstItem(g.id))), available: true, sold_at_store: true, sort_order: i + 1, opt_grp_ref_ids: gids })),
-    // codes: CGST_P / SGST_P (UrbanPiper's India codes); with more than one GST rate each rate gets its own code (CGST_2.5_P, ...)
+    // codes: UrbanPiper takes only CGST_P / SGST_P (IGST_P) for India, any other code is refused; with more than one GST
+    // rate each rate is its own pair with those codes, told apart by its title ("CGST 2.5%") and its items
     taxes: rates.flatMap((r) => (['CGST', 'SGST'] as const).map((t) => ({
-      code: rates.length === 1 ? `${t}_P` : `${t}_${r / 200}_P`, title: t, active: true, structure: { value: r / 200 }, item_ref_ids: items.filter((i) => i.rateBp === r).map((i) => i.id),
+      code: `${t}_P`, title: rates.length === 1 ? t : `${t} ${r / 200}%`, description: `${r / 200}% ${t}`, active: true, structure: { value: r / 200 }, item_ref_ids: items.filter((i) => i.rateBp === r).map((i) => i.id),
     }))),
     // packaging: item level only (Swiggy takes no order-level charges; Zomato only percentages on the order), titled as both require
     ...(packaging.mode === 'none' ? {} : {

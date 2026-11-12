@@ -173,3 +173,22 @@ test('hub: unanswered orders are auto-rejected (F7); a store offline for 60 s ta
     assert.equal((await codOrder(h, { mobile: '9000000015' })).json.error.code, 'STORE_CLOSED');
   } finally { await h.close(); cleanup(h.dir); }
 });
+
+test('hub: a POS whose menu count is behind (restored backup, paired again) still gets its new settings through', async () => {
+  const clock = { t: Date.parse('2026-10-16T12:00:00+05:30') };
+  const h = await startHub(undefined, clock);
+  try {
+    const { key } = await readyStore(h, { menu: menu({ version: 40 }) });
+    const hours = (open: string, close: string) => ({ ...menu().serviceability, hours: Object.fromEntries(['0', '1', '2', '3', '4', '5', '6'].map((d) => [d, [{ open, close }]])) });
+    // right after version 40, an older publish is one arriving late: dropped
+    const late = (await h.call('PUT', '/v1/pos/menu', { key, body: menu({ version: 39, serviceability: hours('09:00', '21:00') as never }) })).json;
+    assert.equal(late.stale, true);
+    // later, a lower number is the POS's newest menu: kept
+    clock.t += 5 * 60_000;
+    const r = (await h.call('PUT', '/v1/pos/menu', { key, body: menu({ version: 3, serviceability: hours('12:00', '23:59') as never }) })).json;
+    assert.equal(r.stale, false);
+    const kept = (await h.call('PUT', '/v1/pos/menu', { key, body: menu({ version: 4, serviceability: hours('12:00', '23:30') as never }) })).json;
+    assert.equal(kept.stale, false, 'the next change right after it goes through too');
+    assert.deepEqual((await h.call('GET', '/v1/stores/demo-burger')).json.menu.version, 4);
+  } finally { await h.close(); cleanup(h.dir); }
+});

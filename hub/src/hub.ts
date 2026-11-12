@@ -425,8 +425,11 @@ export class Hub {
     const svc = checkServiceability(m.serviceability);
     if (!svc.ok) throw new HubError('VALIDATION', 'The serviceability settings are not valid.', 400, { fields: svc.errors });
     const cur = this.store({ id: dev.storeId });
-    if (m.version < cur.menu_version) return { version: cur.menu_version, stale: true }; // an older publish arriving late
-    exec(this.db, 'UPDATE store SET menu_json = ?, menu_version = ?, name = ? WHERE id = ?', JSON.stringify({ ...m, serviceability: svc.value }), m.version, String(m.storeName || cur.name).slice(0, 80), dev.storeId);
+    // a lower version is an older publish arriving late only right after the newer one; later it is a POS whose count is
+    // behind (a restored backup, a POS paired again): its menu is the newest, so it is kept, or the shop's changes never arrive
+    const at = (cur as StoreRow & { menu_at?: number | null }).menu_at ?? 0;
+    if (m.version < cur.menu_version && this.now() - at < 60_000) return { version: cur.menu_version, stale: true };
+    exec(this.db, 'UPDATE store SET menu_json = ?, menu_version = ?, name = ?, menu_at = ? WHERE id = ?', JSON.stringify({ ...m, serviceability: svc.value }), m.version, String(m.storeName || cur.name).slice(0, 80), this.now(), dev.storeId);
     const keep = new Set(m.items.map((i) => i.image).filter((x): x is string => typeof x === 'string'));
     for (const r of many<{ name: string }>(this.db, 'SELECT name FROM image WHERE store_id = ?', dev.storeId)) if (!keep.has(r.name)) exec(this.db, 'DELETE FROM image WHERE store_id = ? AND name = ?', dev.storeId, r.name);
     this.bus.emit('menu', dev.storeId);
