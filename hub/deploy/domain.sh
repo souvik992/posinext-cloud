@@ -67,6 +67,9 @@ EOF
 else
   domain="${HUB_DOMAIN:-}"
   [ -z "$domain" ] && domain="$(ip_dashed).sslip.io"
+  # other sites on this server that the Caddyfile imports (e.g. the posinext.com website) stay imported
+  keep_imports=""
+  if [ -f "$CADDYFILE" ]; then keep_imports=$(grep -E '^import ' "$CADDYFILE" | grep -vE '/posinext-cloud.caddy$' || true); fi
   cat > "$CADDYFILE" <<EOF
 # P6-02: each outlet's device address <store>.$domain gets its own certificate on demand, only for stores the
 # cloud knows (it answers /v1/tls-ask).
@@ -114,6 +117,7 @@ $extra {
 }
 EOF
   done
+  if [ -n "$keep_imports" ]; then printf '\n# other sites on this server (kept)\n%s\n' "$keep_imports" >> "$CADDYFILE"; fi
 fi
 
 # the customer portal's site (portal.sh appends it to this hub's Caddy file)
