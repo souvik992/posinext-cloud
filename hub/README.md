@@ -275,7 +275,7 @@ hub (`src/portal.ts`) serves it on `HUB_PORTAL_DOMAIN`; its `/v1/...` calls reac
 
 Moving portal.posinext.com from Lovable to this server (once):
 1. Merge saas-portal's portal into main, so its CI publishes the first `portal-build`.
-2. On the server, once: `sudo bash /opt/posinext-hub/deploy/install.sh` (installs the new update script); later
+2. On the server, once: `sudo bash /opt/posinext-cloud/hub/deploy/install.sh` (installs the new update script); later
    updates are `sudo posinext-cloud-update`.
 3. Email must work for sign-up codes: `HUB_BREVO_API_KEY` and `HUB_MAIL_FROM` in `/etc/posinext-cloud.env`.
 4. Cloudflare DNS for posinext.com: replace the `portal` record (Lovable's) with an **A** record to this server's IP,

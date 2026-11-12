@@ -111,7 +111,7 @@ EOF
 # Points Caddy at the hub's address and sets HUB_PUBLIC_URL (deploy/domain.sh: in the repository, so updates reach it).
 cat > /usr/local/bin/posinext-cloud-domain <<'SCRIPT'
 #!/bin/bash
-exec /bin/bash /opt/posinext-hub/deploy/domain.sh "$@"
+exec /bin/bash /opt/posinext-cloud/hub/deploy/domain.sh "$@"
 SCRIPT
 chmod 755 /usr/local/bin/posinext-cloud-domain
 
@@ -121,7 +121,7 @@ cat > /usr/local/bin/posinext-cloud-update <<'SCRIPT'
 set -euo pipefail
 git -C /opt/posinext-cloud fetch --depth 1 origin main
 git -C /opt/posinext-cloud reset --hard origin/main
-bash /opt/posinext-hub/deploy/portal.sh || echo "Portal not updated; the hub is."
+bash /opt/posinext-cloud/hub/deploy/portal.sh || echo "Portal not updated; the hub is."
 systemctl restart posinext-cloud
 echo "Hub updated to $(git -C /opt/posinext-cloud log -1 --format='%h %s')"
 SCRIPT
@@ -133,7 +133,7 @@ chmod 755 /usr/local/bin/posinext-cloud-update
 rm -f /etc/cron.daily/posinext-cloud-backup
 cat > /etc/cron.hourly/posinext-cloud-backup <<'SCRIPT'
 #!/bin/bash
-exec /bin/bash /opt/posinext-hub/deploy/backup.sh
+exec /bin/bash /opt/posinext-cloud/hub/deploy/backup.sh
 SCRIPT
 chmod 755 /etc/cron.hourly/posinext-cloud-backup
 
@@ -145,10 +145,10 @@ if [ "$MOVED" = "1" ]; then chown -R posinextcloud:posinextcloud /var/lib/posine
 if [ -d /opt/posinext-cloud/.git ]; then
   git -C /opt/posinext-cloud fetch --depth 1 origin main
   git -C /opt/posinext-cloud reset --hard origin/main
-  bash /opt/posinext-hub/deploy/portal.sh || echo "Portal not updated; the hub is."
+  bash /opt/posinext-cloud/hub/deploy/portal.sh || echo "Portal not updated; the hub is."
 else
   git clone --depth 1 https://github.com/souvik992/posinext-cloud.git /opt/posinext-cloud
-  bash /opt/posinext-hub/deploy/portal.sh || echo "Portal not installed yet; run posinext-cloud-update later."
+  bash /opt/posinext-cloud/hub/deploy/portal.sh || echo "Portal not installed yet; run posinext-cloud-update later."
 fi
 systemctl daemon-reload
 systemctl enable posinext-cloud

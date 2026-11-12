@@ -84,7 +84,7 @@ write_files:
         }
       }
       EOF
-      bash /opt/posinext-hub/deploy/portal.sh --caddy-only || true
+      bash /opt/posinext-cloud/hub/deploy/portal.sh --caddy-only || true
       sed -i '/^HUB_PUBLIC_URL=/d' /etc/posinext-cloud.env
       echo "HUB_PUBLIC_URL=https://$domain" >> /etc/posinext-cloud.env
       systemctl restart posinext-cloud
@@ -99,7 +99,7 @@ write_files:
       set -euo pipefail
       git -C /opt/posinext-cloud fetch --depth 1 origin main
       git -C /opt/posinext-cloud reset --hard origin/main
-      bash /opt/posinext-hub/deploy/portal.sh || echo "Portal not updated; the hub is."
+      bash /opt/posinext-cloud/hub/deploy/portal.sh || echo "Portal not updated; the hub is."
       systemctl restart posinext-cloud
       echo "Hub updated to $(git -C /opt/posinext-cloud log -1 --format='%h %s')"
 
@@ -109,7 +109,7 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
-      exec /bin/bash /opt/posinext-hub/deploy/backup.sh
+      exec /bin/bash /opt/posinext-cloud/hub/deploy/backup.sh
 
 runcmd:
   - snap install aws-cli --classic || true
@@ -124,7 +124,7 @@ runcmd:
   - useradd --system --home /var/lib/posinext-cloud --shell /usr/sbin/nologin posinextcloud
   - install -d -o posinextcloud -g posinextcloud -m 0750 /var/lib/posinext-cloud
   - git clone --depth 1 https://github.com/souvik992/posinext-cloud.git /opt/posinext-cloud
-  - bash /opt/posinext-hub/deploy/portal.sh || true
+  - bash /opt/posinext-cloud/hub/deploy/portal.sh || true
   - systemctl daemon-reload
   - systemctl enable --now posinext-cloud
   - /usr/local/bin/posinext-cloud-domain
