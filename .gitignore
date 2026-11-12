@@ -1,4 +1,5 @@
 node_modules/
+!outlet-server/node_modules/
 hub/hub-data/
 *.db
 *.db-wal

@@ -40,7 +40,7 @@ interface Running {
 }
 
 export interface HostedOptions {
-  /** The DinePOS server bundle (server.mjs); see cloud/outlet-server. */
+  /** The DinePOS server bundle (server.mjs); see outlet-server (built by npm run bundle:cloud in the fine-dine repository). */
   serverEntry: string;
   /** Folder for the outlets' data (each outlet gets <dataRoot>/<store id>). */
   dataRoot: string;
@@ -84,7 +84,7 @@ export class HostedOutlets {
 
   /** Makes this store a hosted outlet (or switches it back on) and starts its server. */
   enable(slug: string): { port: number } {
-    if (!this.available) throw new HubError('NOT_AVAILABLE', 'This cloud has no DinePOS outlet server installed (cloud/outlet-server).', 503);
+    if (!this.available) throw new HubError('NOT_AVAILABLE', 'This cloud has no DinePOS outlet server installed (outlet-server).', 503);
     const store = this.hub.store({ slug });
     let r = this.row(store.id);
     if (!r) {

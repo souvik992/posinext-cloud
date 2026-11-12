@@ -1,0 +1,12 @@
+{
+  "name": "DinePOS Captain",
+  "short_name": "Captain",
+  "description": "Take table orders on your phone.",
+  "start_url": "/captain/",
+  "scope": "/captain/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f4ef",
+  "theme_color": "#d4622a",
+  "icons": [{ "src": "/captain/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

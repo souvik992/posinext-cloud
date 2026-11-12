@@ -1,0 +1,19 @@
+{
+  "name": "DinePOS Kitchen",
+  "short_name": "Kitchen",
+  "description": "Kitchen order tickets on a screen: bump when ready.",
+  "start_url": "/kds/",
+  "scope": "/kds/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#1c1714",
+  "theme_color": "#1c1714",
+  "icons": [
+    {
+      "src": "/kds/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -12,10 +12,11 @@ import { HostedOutlets } from '../src/hosted.ts';
 import { one } from '../src/db.ts';
 import { cleanup } from './helpers.ts';
 
-// P6-04: a hosted outlet. Its DinePOS server runs under the cloud; devices reach it at https://<store>.<cloud>. Uses the
-// DinePOS server bundle built for this OS (apps/server/dist-bundle on Windows, or HUB_TEST_OUTLET_SERVER).
-const repo = join(import.meta.dirname, '..', '..', '..');
-const entry = process.env.HUB_TEST_OUTLET_SERVER ?? (process.platform === 'win32' ? join(repo, 'apps', 'server', 'dist-bundle', 'server.mjs') : join(repo, 'cloud', 'outlet-server', 'server.mjs'));
+// P6-04: a hosted outlet. Its DinePOS server runs under the cloud; devices reach it at https://<store>.<cloud>.
+// The bundle in outlet-server/ is built for Linux (the cloud server); on Windows, point HUB_TEST_OUTLET_SERVER at a
+// Windows build (fine-dine: npm run bundle -w @dinepos/server -> apps/server/dist-bundle/server.mjs).
+const repo = join(import.meta.dirname, '..', '..');
+const entry = process.env.HUB_TEST_OUTLET_SERVER ?? (process.platform === 'win32' ? '' : join(repo, 'outlet-server', 'server.mjs'));
 const HOST = 'spice-garden.cloud.test';
 
 function device(port: number, path: string, o: { method?: string; headers?: Record<string, string>; body?: unknown } = {}) {
@@ -82,7 +83,7 @@ function stream(port: number) {
   });
 }
 
-test('hosted outlet: set up and first terminal from the admin page; devices pair and work; the proxy never makes them the master', { skip: !existsSync(entry) ? `no DinePOS server bundle at ${entry}` : false, timeout: 120_000 }, async () => {
+test('hosted outlet: set up and first terminal from the admin page; devices pair and work; the proxy never makes them the master', { skip: !entry || !existsSync(entry) ? `no DinePOS server bundle (${entry || 'set HUB_TEST_OUTLET_SERVER on Windows'})` : false, timeout: 120_000 }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'cloud-hosted-'));
   const hub = new Hub({ dbPath: join(dir, 'hub.db') });
   const hosted = new HostedOutlets(hub, { serverEntry: entry, dataRoot: join(dir, 'outlets'), basePort: 5600 + Math.floor(Math.random() * 300) });

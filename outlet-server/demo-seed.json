@@ -1,0 +1,1252 @@
+{
+ "setup": {
+  "type": "SetupOutlet",
+  "payload": {
+   "outletName": "Spice Garden (demo)",
+   "ownerId": "011TFZDCWJJDQM7A5RZMYATF1K",
+   "ownerName": "Asha (Owner)",
+   "pin": "1234"
+  }
+ },
+ "commands": [
+  {
+   "type": "UpsertUser",
+   "payload": {
+    "id": "01R45GYSHWDJJVTBMGG44NE8V9",
+    "name": "Vikram (Manager)",
+    "roleId": "01JR0000000000000000000002",
+    "pin": "2345"
+   }
+  },
+  {
+   "type": "UpsertUser",
+   "payload": {
+    "id": "01491B1GAETAT5FG3QR8BR5TPN",
+    "name": "Meena (Cashier)",
+    "roleId": "01JR0000000000000000000003",
+    "pin": "1111"
+   }
+  },
+  {
+   "type": "UpsertUser",
+   "payload": {
+    "id": "013W86PJQ5S9EBE8ZN14MMEP1E",
+    "name": "Ravi (Captain)",
+    "roleId": "01JR0000000000000000000004",
+    "pin": "3333"
+   }
+  },
+  {
+   "type": "SetConfig",
+   "payload": {
+    "values": {
+     "outlet.name": "Spice Garden (DEMO)",
+     "outlet.addressLines": [
+      "12 Park Street",
+      "Kolkata 700016"
+     ],
+     "outlet.phone": "033 4000 1234",
+     "bill.prefix": "B",
+     "bill.serviceChargeBp": 1000,
+     "bill.upiVpa": "spicegarden.demo@okbank"
+    }
+   }
+  },
+  {
+   "type": "UpsertPrinter",
+   "payload": {
+    "id": "01R3CNTF78BF1X6ASDXD5HFQNA",
+    "name": "Kitchen printer",
+    "transport": "fake",
+    "role": "kot",
+    "widthMm": 80
+   }
+  },
+  {
+   "type": "UpsertPrinter",
+   "payload": {
+    "id": "01A3Q6425YQ6QRSWB505NQ12R6",
+    "name": "Tandoor printer",
+    "transport": "fake",
+    "role": "kot",
+    "widthMm": 80
+   }
+  },
+  {
+   "type": "UpsertPrinter",
+   "payload": {
+    "id": "01AYW1J3EDRDZH7NMVFRZNQXHF",
+    "name": "Bar printer",
+    "transport": "fake",
+    "role": "kot",
+    "widthMm": 80
+   }
+  },
+  {
+   "type": "UpsertPrinter",
+   "payload": {
+    "id": "01QX8J44DM70AZSWDTX065HBC1",
+    "name": "Bill printer",
+    "transport": "fake",
+    "role": "bill",
+    "widthMm": 80
+   }
+  },
+  {
+   "type": "UpsertStation",
+   "payload": {
+    "id": "014C7FSJB5MKDZHJJ61DZPQQBJ",
+    "name": "Kitchen",
+    "printerIds": [
+     "01R3CNTF78BF1X6ASDXD5HFQNA"
+    ]
+   }
+  },
+  {
+   "type": "UpsertStation",
+   "payload": {
+    "id": "011KB271VMPMD0GVY6J73TA1WE",
+    "name": "Tandoor",
+    "printerIds": [
+     "01A3Q6425YQ6QRSWB505NQ12R6"
+    ]
+   }
+  },
+  {
+   "type": "UpsertStation",
+   "payload": {
+    "id": "0109QCMBXJDB0NXDAXM82ZJK74",
+    "name": "Bar",
+    "printerIds": [
+     "01AYW1J3EDRDZH7NMVFRZNQXHF"
+    ]
+   }
+  },
+  {
+   "type": "UpsertArea",
+   "payload": {
+    "id": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "name": "Main Hall",
+    "sort": 0
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01MQP2HCKMDS4NF28V079HH5VE",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T1",
+    "seats": 4,
+    "layoutX": 20,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01VZK46B9XE64255JGVS0WTHMT",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T2",
+    "seats": 4,
+    "layoutX": 180,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01JDAF5VSDZDGBYKM9F9E669VY",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T3",
+    "seats": 4,
+    "layoutX": 340,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "0160SYNHX6Z95NW1CPWA9CMHG1",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T4",
+    "seats": 4,
+    "layoutX": 500,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01T9KWER728AZQ48AT927CF77D",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T5",
+    "seats": 4,
+    "layoutX": 20,
+    "layoutY": 140
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "012CMPPPTE1M9HACPD7FJWD9M5",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T6",
+    "seats": 4,
+    "layoutX": 180,
+    "layoutY": 140
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "019BKTJQV353RZYZRASQGEFTKY",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T7",
+    "seats": 4,
+    "layoutX": 340,
+    "layoutY": 140
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "015XYMNXFH1VW8R36B4ZWE6E8F",
+    "areaId": "01YNWJS812CQAZZVYZHK6FG1BX",
+    "label": "T8",
+    "seats": 4,
+    "layoutX": 500,
+    "layoutY": 140
+   }
+  },
+  {
+   "type": "UpsertArea",
+   "payload": {
+    "id": "01E7CNSY27G1HEX6P6MGTXXPR4",
+    "name": "Terrace",
+    "sort": 1
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01M9713DFE08GXKC1W6ZAXF7M1",
+    "areaId": "01E7CNSY27G1HEX6P6MGTXXPR4",
+    "label": "R1",
+    "seats": 6,
+    "layoutX": 20,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01EP53DREXRG0RQNA1YXARNWVV",
+    "areaId": "01E7CNSY27G1HEX6P6MGTXXPR4",
+    "label": "R2",
+    "seats": 6,
+    "layoutX": 180,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01A04W1Y88Q1PK3DJ9A9BZTX2N",
+    "areaId": "01E7CNSY27G1HEX6P6MGTXXPR4",
+    "label": "R3",
+    "seats": 6,
+    "layoutX": 340,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertTable",
+   "payload": {
+    "id": "01YYQZ4SA67VPEJ4Q6CA3CCWZV",
+    "areaId": "01E7CNSY27G1HEX6P6MGTXXPR4",
+    "label": "R4",
+    "seats": 6,
+    "layoutX": 500,
+    "layoutY": 20
+   }
+  },
+  {
+   "type": "UpsertAddonGroup",
+   "payload": {
+    "id": "01REDV00JYSB5CARDRF9HP7TWP",
+    "name": "Extras",
+    "minSelect": 0,
+    "maxSelect": 3,
+    "addons": [
+     {
+      "id": "01W9M2BV753T8VNMRF6EWBG9JW",
+      "name": "Extra cheese",
+      "pricePaise": 4000
+     },
+     {
+      "id": "01C7J213BR7JWWY3MMGBCNT0PE",
+      "name": "Extra butter",
+      "pricePaise": 3000
+     },
+     {
+      "id": "015ECR17FS80320Z8EGW7T43JN",
+      "name": "Extra paneer",
+      "pricePaise": 6000
+     }
+    ]
+   }
+  },
+  {
+   "type": "UpsertAddonGroup",
+   "payload": {
+    "id": "01H15FTJ5QKR5Y8P7JDY4H9CM4",
+    "name": "Spice level",
+    "minSelect": 1,
+    "maxSelect": 1,
+    "addons": [
+     {
+      "id": "015VP1E6SGE1KJWZ6D388HX6DK",
+      "name": "Mild",
+      "pricePaise": 0
+     },
+     {
+      "id": "01HXKCR2YAAFVW60WE6QF42QZM",
+      "name": "Medium",
+      "pricePaise": 0
+     },
+     {
+      "id": "010A26J68T66R4W9PSK6MM3QBM",
+      "name": "Hot",
+      "pricePaise": 0
+     }
+    ]
+   }
+  },
+  {
+   "type": "UpsertAddonGroup",
+   "payload": {
+    "id": "0132EMZDKV71B5Y26FCM81NGF3",
+    "name": "Mixers",
+    "minSelect": 0,
+    "maxSelect": 1,
+    "addons": [
+     {
+      "id": "01XJHPT7BQYR9535KTFGZBGSW2",
+      "name": "Soda",
+      "pricePaise": 3000
+     },
+     {
+      "id": "013DBMEQY0KCC1PH5XHPZC8WY0",
+      "name": "Tonic water",
+      "pricePaise": 6000
+     }
+    ]
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Starters",
+    "stationId": "011KB271VMPMD0GVY6J73TA1WE",
+    "sort": 0
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "01NWAJ8ZREBFKSXQ9DH375BK4Z",
+    "name": "Tandoor Breads",
+    "stationId": "011KB271VMPMD0GVY6J73TA1WE",
+    "sort": 1
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Main Course",
+    "stationId": "014C7FSJB5MKDZHJJ61DZPQQBJ",
+    "sort": 2
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "017N05R8WZ8Y7818SJ85YHEKH6",
+    "name": "Rice & Biryani",
+    "stationId": "014C7FSJB5MKDZHJJ61DZPQQBJ",
+    "sort": 3
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "01X8DN4X3MYSWA7H6J7FJ9SQNZ",
+    "name": "Desserts",
+    "stationId": "014C7FSJB5MKDZHJJ61DZPQQBJ",
+    "sort": 4
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "01DRYM4CEWC3M5T8W0061FJAQ7",
+    "name": "Beverages",
+    "stationId": "0109QCMBXJDB0NXDAXM82ZJK74",
+    "sort": 5
+   }
+  },
+  {
+   "type": "UpsertCategory",
+   "payload": {
+    "id": "01PPZVDEBV9G5W8321MFYCPBX4",
+    "name": "Mocktails",
+    "stationId": "0109QCMBXJDB0NXDAXM82ZJK74",
+    "sort": 6
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "014PKA7Y9K3XJZ5JSWFGATCMD8",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Paneer Tikka",
+    "shortCode": "PT",
+    "veg": true,
+    "basePricePaise": 32000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 0,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "0163ZW65Q4A8EW3BXQV8QS3AE2",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Hara Bhara Kebab",
+    "shortCode": "HBK",
+    "veg": true,
+    "basePricePaise": 26000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 1,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01E7YM1S70FT2BP4EMCQ8V2FHK",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Chicken Tikka",
+    "shortCode": "CT",
+    "veg": false,
+    "basePricePaise": 36000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 2,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01ZG7XWR7DDMXZEA5B8NK7ARW3",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Tandoori Chicken",
+    "shortCode": "TC",
+    "veg": false,
+    "basePricePaise": 32000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 3,
+    "variants": [
+     {
+      "id": "01AJ27WV3VV5ACSKQQYJEV45PR",
+      "name": "Half",
+      "pricePaise": 32000,
+      "sort": 0
+     },
+     {
+      "id": "01HTEBBTZ0HMQZV2MJ387GD54A",
+      "name": "Full",
+      "pricePaise": 58000,
+      "sort": 1
+     }
+    ],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01ART6Q6EXXVJ61G5E6TTVBSAX",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Fish Amritsari",
+    "shortCode": "FA",
+    "veg": false,
+    "basePricePaise": 42000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 4,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01GS2C7YZVG7AQMPHJMJW0SNHQ",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Veg Spring Roll",
+    "shortCode": "VSR",
+    "veg": true,
+    "basePricePaise": 24000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 5,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "014KHYDZP865NDX1BKK8WP9KRP",
+    "categoryId": "01EEA7D4NFJNH7Z2WXGHMW4Y7Z",
+    "name": "Chilli Paneer",
+    "shortCode": "CP",
+    "veg": true,
+    "basePricePaise": 30000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 6,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "017056M31CFMPQ4DZQJ71C3AMY",
+    "categoryId": "01NWAJ8ZREBFKSXQ9DH375BK4Z",
+    "name": "Butter Naan",
+    "shortCode": "BN",
+    "veg": true,
+    "basePricePaise": 6000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 7,
+    "variants": [],
+    "addonGroupIds": [
+     "01REDV00JYSB5CARDRF9HP7TWP"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "010CBMCHS6CJ8VE1TK7DT766GH",
+    "categoryId": "01NWAJ8ZREBFKSXQ9DH375BK4Z",
+    "name": "Garlic Naan",
+    "shortCode": "GN",
+    "veg": true,
+    "basePricePaise": 7000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 8,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01140PTYX5AR9VMK3S42W4E4QR",
+    "categoryId": "01NWAJ8ZREBFKSXQ9DH375BK4Z",
+    "name": "Tandoori Roti",
+    "shortCode": "TR",
+    "veg": true,
+    "basePricePaise": 3500,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 9,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01D4ZPXJ2P6VM8SVZ5BX8RW7QM",
+    "categoryId": "01NWAJ8ZREBFKSXQ9DH375BK4Z",
+    "name": "Laccha Paratha",
+    "shortCode": "LP",
+    "veg": true,
+    "basePricePaise": 6500,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 10,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "015XERVYD3VHBPBYWB9RAJQ8DC",
+    "categoryId": "01NWAJ8ZREBFKSXQ9DH375BK4Z",
+    "name": "Cheese Naan",
+    "shortCode": "CN",
+    "veg": true,
+    "basePricePaise": 9000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 11,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "011QZ9MJF9B3ZZHW83C9TF1KBP",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Dal Makhani",
+    "shortCode": "DM",
+    "veg": true,
+    "basePricePaise": 28000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 12,
+    "variants": [],
+    "addonGroupIds": [
+     "01REDV00JYSB5CARDRF9HP7TWP"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01E07Q7QZGTS3GJ3M05ED1GHZ6",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Paneer Butter Masala",
+    "shortCode": "PBM",
+    "veg": true,
+    "basePricePaise": 32000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 13,
+    "variants": [],
+    "addonGroupIds": [
+     "01REDV00JYSB5CARDRF9HP7TWP"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01N698AWPFG1AHMV2V1404DGC0",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Butter Chicken",
+    "shortCode": "BC",
+    "veg": false,
+    "basePricePaise": 30000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 14,
+    "variants": [
+     {
+      "id": "01GN88X65BQX1S68FYF0XCEPZF",
+      "name": "Half",
+      "pricePaise": 30000,
+      "sort": 0
+     },
+     {
+      "id": "015N99C9CYV1BRKWX0ZWZEWD0E",
+      "name": "Full",
+      "pricePaise": 52000,
+      "sort": 1
+     }
+    ],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01GSNC1ZTAKTNG9M8AJAEBE1QV",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Kadai Paneer",
+    "shortCode": "KP",
+    "veg": true,
+    "basePricePaise": 31000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 15,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01KBDSN8VMV3BVZ11M4W7JQJTN",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Rogan Josh",
+    "shortCode": "RJ",
+    "veg": false,
+    "basePricePaise": 46000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 16,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01NM49MA6VDC3MY8F3YWW7V7H9",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Chana Masala",
+    "shortCode": "CM",
+    "veg": true,
+    "basePricePaise": 24000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 17,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01DMF1T4ZZ596HRNQE88X36P0Z",
+    "categoryId": "01PHQYR9NPJ78M61TZJYM06JGF",
+    "name": "Veg Kolhapuri",
+    "shortCode": "VK",
+    "veg": true,
+    "basePricePaise": 26000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 18,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "013A74ANMXMKEDBJ1GZMG3E829",
+    "categoryId": "017N05R8WZ8Y7818SJ85YHEKH6",
+    "name": "Jeera Rice",
+    "shortCode": "JR",
+    "veg": true,
+    "basePricePaise": 18000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 19,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01JCNQG346BA5MZD9RK1QP3M3N",
+    "categoryId": "017N05R8WZ8Y7818SJ85YHEKH6",
+    "name": "Veg Biryani",
+    "shortCode": "VB",
+    "veg": true,
+    "basePricePaise": 28000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 20,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01X7M2DKRF1Z0KNHBVFGCG644F",
+    "categoryId": "017N05R8WZ8Y7818SJ85YHEKH6",
+    "name": "Chicken Biryani",
+    "shortCode": "CB",
+    "veg": false,
+    "basePricePaise": 34000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 21,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01QSH9WZWW126A7EW9C182G99D",
+    "categoryId": "017N05R8WZ8Y7818SJ85YHEKH6",
+    "name": "Mutton Biryani",
+    "shortCode": "MB",
+    "veg": false,
+    "basePricePaise": 42000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 22,
+    "variants": [],
+    "addonGroupIds": [
+     "01H15FTJ5QKR5Y8P7JDY4H9CM4"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01V3QG56C6119SVZ4JSN4TVCHG",
+    "categoryId": "01X8DN4X3MYSWA7H6J7FJ9SQNZ",
+    "name": "Gulab Jamun",
+    "shortCode": "GJ",
+    "veg": true,
+    "basePricePaise": 12000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 23,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "010AEEYHD7PNHTV5AZ9379SGCT",
+    "categoryId": "01X8DN4X3MYSWA7H6J7FJ9SQNZ",
+    "name": "Rasmalai",
+    "shortCode": "RM",
+    "veg": true,
+    "basePricePaise": 14000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 24,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01ENEJNHQBT9M6CZMHD91QGKP4",
+    "categoryId": "01X8DN4X3MYSWA7H6J7FJ9SQNZ",
+    "name": "Kulfi",
+    "shortCode": "KF",
+    "veg": true,
+    "basePricePaise": 15000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 25,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01NZY9ANSSWQMZWCJVNGH8612W",
+    "categoryId": "01DRYM4CEWC3M5T8W0061FJAQ7",
+    "name": "Masala Chai",
+    "shortCode": "MC",
+    "veg": true,
+    "basePricePaise": 6000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 26,
+    "variants": [],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "013KS3Z6T9KGHSWDMEW434J0TF",
+    "categoryId": "01DRYM4CEWC3M5T8W0061FJAQ7",
+    "name": "Lassi",
+    "shortCode": "LS",
+    "veg": true,
+    "basePricePaise": 12000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 27,
+    "variants": [
+     {
+      "id": "01W6Z4G1T8SXMM905YABYB1EJE",
+      "name": "Sweet",
+      "pricePaise": 12000,
+      "sort": 0
+     },
+     {
+      "id": "01HB2XAEXE5CVD8702DV2ZQHRR",
+      "name": "Salted",
+      "pricePaise": 12000,
+      "sort": 1
+     }
+    ],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01V15SKKGBX7SEP6W86D3ED732",
+    "categoryId": "01PPZVDEBV9G5W8321MFYCPBX4",
+    "name": "Virgin Mojito",
+    "shortCode": "VM",
+    "veg": true,
+    "basePricePaise": 22000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 28,
+    "variants": [],
+    "addonGroupIds": [
+     "0132EMZDKV71B5Y26FCM81NGF3"
+    ]
+   }
+  },
+  {
+   "type": "UpsertMenuItem",
+   "payload": {
+    "id": "01W21XHHNR713C08CW2QQ8302F",
+    "categoryId": "01PPZVDEBV9G5W8321MFYCPBX4",
+    "name": "Fresh Lime Soda",
+    "shortCode": "FLS",
+    "veg": true,
+    "basePricePaise": 12000,
+    "taxRateBp": 500,
+    "hsnSac": "996331",
+    "sort": 29,
+    "variants": [
+     {
+      "id": "01XC418K1GA8WNSPD12FV6S8FQ",
+      "name": "Sweet",
+      "pricePaise": 12000,
+      "sort": 0
+     },
+     {
+      "id": "012VB30MWJ5R0SS96P4M22V3GS",
+      "name": "Salted",
+      "pricePaise": 12000,
+      "sort": 1
+     }
+    ],
+    "addonGroupIds": []
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "014PP5CV8NXDF5FG1VW8E1EBVM",
+    "name": "Paneer",
+    "unit": "kg",
+    "reorderLevelMilli": 3000,
+    "opening": {
+     "qtyMilli": 8000,
+     "unitCostPaise": 34000
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "01WC1785ZWT08PB30AWJ6FNNXP",
+    "name": "Chicken",
+    "unit": "kg",
+    "reorderLevelMilli": 5000,
+    "opening": {
+     "qtyMilli": 15000,
+     "unitCostPaise": 24000
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "01BE8YQYCQDT6EA0ECPV47H6HR",
+    "name": "Butter",
+    "unit": "kg",
+    "reorderLevelMilli": 2000,
+    "opening": {
+     "qtyMilli": 4000,
+     "unitCostPaise": 52000
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "014J0ZF72FZCG9JADYPYVMVXYQ",
+    "name": "Fresh cream",
+    "unit": "l",
+    "reorderLevelMilli": 2000,
+    "opening": {
+     "qtyMilli": 3000,
+     "unitCostPaise": 26000
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "0135G67NB03JPXQEYE3GPAV3QH",
+    "name": "Maida",
+    "unit": "kg",
+    "reorderLevelMilli": 8000,
+    "opening": {
+     "qtyMilli": 20000,
+     "unitCostPaise": 4500
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "01TKX47DY6JA89DA0ERX9JS1Z9",
+    "name": "Urad dal",
+    "unit": "kg",
+    "reorderLevelMilli": 2000,
+    "opening": {
+     "qtyMilli": 6000,
+     "unitCostPaise": 14000
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "0127E43C3BKTGDMF23KNCDWWFA",
+    "name": "Cheese",
+    "unit": "kg",
+    "reorderLevelMilli": 2000,
+    "opening": {
+     "qtyMilli": 1000,
+     "unitCostPaise": 60000
+    }
+   }
+  },
+  {
+   "type": "UpsertStockItem",
+   "payload": {
+    "id": "01G571PSJPMJQB2RT8SP55W87K",
+    "name": "Mint",
+    "unit": "g",
+    "reorderLevelMilli": 200000,
+    "opening": {
+     "qtyMilli": 500000,
+     "unitCostPaise": 100
+    }
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "014PKA7Y9K3XJZ5JSWFGATCMD8",
+    "lines": [
+     {
+      "stockItemId": "014PP5CV8NXDF5FG1VW8E1EBVM",
+      "qtyMilli": 200
+     },
+     {
+      "stockItemId": "014J0ZF72FZCG9JADYPYVMVXYQ",
+      "qtyMilli": 20
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "01ZG7XWR7DDMXZEA5B8NK7ARW3",
+    "lines": [
+     {
+      "stockItemId": "01WC1785ZWT08PB30AWJ6FNNXP",
+      "qtyMilli": 900
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "variant",
+    "ownerId": "01AJ27WV3VV5ACSKQQYJEV45PR",
+    "lines": [
+     {
+      "stockItemId": "01WC1785ZWT08PB30AWJ6FNNXP",
+      "qtyMilli": 450
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "017056M31CFMPQ4DZQJ71C3AMY",
+    "lines": [
+     {
+      "stockItemId": "0135G67NB03JPXQEYE3GPAV3QH",
+      "qtyMilli": 80
+     },
+     {
+      "stockItemId": "01BE8YQYCQDT6EA0ECPV47H6HR",
+      "qtyMilli": 10
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "015XERVYD3VHBPBYWB9RAJQ8DC",
+    "lines": [
+     {
+      "stockItemId": "0135G67NB03JPXQEYE3GPAV3QH",
+      "qtyMilli": 80
+     },
+     {
+      "stockItemId": "0127E43C3BKTGDMF23KNCDWWFA",
+      "qtyMilli": 40
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "011QZ9MJF9B3ZZHW83C9TF1KBP",
+    "lines": [
+     {
+      "stockItemId": "01TKX47DY6JA89DA0ERX9JS1Z9",
+      "qtyMilli": 120
+     },
+     {
+      "stockItemId": "01BE8YQYCQDT6EA0ECPV47H6HR",
+      "qtyMilli": 25
+     },
+     {
+      "stockItemId": "014J0ZF72FZCG9JADYPYVMVXYQ",
+      "qtyMilli": 30
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "01E07Q7QZGTS3GJ3M05ED1GHZ6",
+    "lines": [
+     {
+      "stockItemId": "014PP5CV8NXDF5FG1VW8E1EBVM",
+      "qtyMilli": 180
+     },
+     {
+      "stockItemId": "01BE8YQYCQDT6EA0ECPV47H6HR",
+      "qtyMilli": 30
+     },
+     {
+      "stockItemId": "014J0ZF72FZCG9JADYPYVMVXYQ",
+      "qtyMilli": 40
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "item",
+    "ownerId": "01V15SKKGBX7SEP6W86D3ED732",
+    "lines": [
+     {
+      "stockItemId": "01G571PSJPMJQB2RT8SP55W87K",
+      "qtyMilli": 10
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "addon",
+    "ownerId": "01W9M2BV753T8VNMRF6EWBG9JW",
+    "lines": [
+     {
+      "stockItemId": "0127E43C3BKTGDMF23KNCDWWFA",
+      "qtyMilli": 30
+     }
+    ]
+   }
+  },
+  {
+   "type": "SetRecipe",
+   "payload": {
+    "ownerKind": "addon",
+    "ownerId": "01C7J213BR7JWWY3MMGBCNT0PE",
+    "lines": [
+     {
+      "stockItemId": "01BE8YQYCQDT6EA0ECPV47H6HR",
+      "qtyMilli": 15
+     }
+    ]
+   }
+  }
+ ],
+ "owner": {
+  "id": "011TFZDCWJJDQM7A5RZMYATF1K",
+  "name": "Asha (Owner)",
+  "pin": "1234"
+ },
+ "staff": [
+  {
+   "id": "01R45GYSHWDJJVTBMGG44NE8V9",
+   "name": "Vikram (Manager)",
+   "pin": "2345"
+  },
+  {
+   "id": "01491B1GAETAT5FG3QR8BR5TPN",
+   "name": "Meena (Cashier)",
+   "pin": "1111"
+  },
+  {
+   "id": "013W86PJQ5S9EBE8ZN14MMEP1E",
+   "name": "Ravi (Captain)",
+   "pin": "3333"
+  }
+ ]
+}
