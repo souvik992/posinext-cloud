@@ -22,6 +22,7 @@ import { Licences, loadSigningKey } from './licences.ts';
 import type { KeyObject } from 'node:crypto';
 import { logMailer } from './mailer.ts';
 import type { Mailer } from './mailer.ts';
+import { PRODUCTS, type ProductCode } from './products.ts';
 
 /**
  * The online order hub: stores and their paired POS devices, published menus, customer orders, and the numbered event
@@ -65,9 +66,10 @@ export interface HubOptions {
 export interface DeviceRef { deviceId: string; storeId: string; slug: string }
 
 export interface StoreRow { id: string; slug: string; name: string; menu_json: string | null; menu_version: number; accepting: number; accepting_reason: string | null; order_counter: number; last_seen_at: number | null; created_at: number; paused_reason: string | null;
-  website_json: string | null; site_draft_json: string | null; site_published_at: number | null; site_draft_at: number | null; site_password_hash: string | null }
+  website_json: string | null; site_draft_json: string | null; site_published_at: number | null; site_draft_at: number | null; site_password_hash: string | null; pos_type: string | null }
 interface OrderRow { id: string; store_id: string; number: string; state: OrderState; data_json: string; access_hash: string; accept_by: number | null }
 
+const isProduct = (v: unknown): v is ProductCode => typeof v === 'string' && Object.hasOwn(PRODUCTS, v);
 const SLUG = /^[a-z0-9][a-z0-9-]{2,40}$/;
 /** Never a store address: outlets are at <store>.<cloud>, and these names are the cloud's own (portal.posinext.com, …). */
 export const RESERVED_SLUGS = new Set(['portal', 'www', 'app', 'api', 'admin', 'mail', 'status', 'help', 'support', 'docs', 'blog', 'demo', 'cloud']);
@@ -145,14 +147,23 @@ export class Hub {
 
   // ---------------------------------------------------------------- stores, pairing, devices
 
-  createStore(slug: string, name: string) {
+  createStore(slug: string, name: string, posType: ProductCode | null = null) {
     if (!SLUG.test(slug)) throw new HubError('VALIDATION', 'The store address must be 3-41 lowercase letters, digits or dashes.');
     if (RESERVED_SLUGS.has(slug)) throw new HubError('SLUG_TAKEN', 'That address is kept for PosiNext Cloud itself. Choose another.', 409);
     if (!name.trim() || name.length > 80) throw new HubError('VALIDATION', 'Enter the store name.');
     if (one(this.db, 'SELECT 1 FROM store WHERE slug = ? UNION ALL SELECT 1 FROM brand WHERE slug = ?', slug, slug)) throw new HubError('SLUG_TAKEN', 'That address is already used by a store or a brand.', 409);
     const id = randomUUID();
-    exec(this.db, 'INSERT INTO store (id, slug, name, created_at) VALUES (?,?,?,?)', id, slug, name.trim(), this.now());
-    return { storeId: id, slug, name: name.trim(), pairingCode: this.newPairingCode(id) };
+    if (posType !== null && !isProduct(posType)) throw new HubError('VALIDATION', 'Choose the POS type.');
+    exec(this.db, 'INSERT INTO store (id, slug, name, created_at, pos_type) VALUES (?,?,?,?,?)', id, slug, name.trim(), this.now(), posType);
+    return { storeId: id, slug, name: name.trim(), posType, pairingCode: this.newPairingCode(id) };
+  }
+
+  /** The store's POS type (admin page): a product code, or null for not known. */
+  setPosType(slug: string, posType: unknown) {
+    const st = this.store({ slug });
+    if (posType !== null && !isProduct(posType)) throw new HubError('VALIDATION', 'Choose the POS type.');
+    exec(this.db, 'UPDATE store SET pos_type = ? WHERE id = ?', posType, st.id);
+    return { slug, posType };
   }
 
   /** A one-time code (valid pairingCodeMinutes, 30 by default) the store types into its POS to connect it. */
@@ -308,7 +319,7 @@ export class Hub {
     const m = this.menu(s);
     const count = (sql: string, ...p: Array<string | number>) => one<{ n: number }>(this.db, sql, ...p)?.n ?? 0;
     return {
-      slug: s.slug, name: s.name, createdAt: s.created_at, menuVersion: s.menu_version, menuItems: m?.items.length ?? 0,
+      slug: s.slug, name: s.name, posType: s.pos_type, createdAt: s.created_at, menuVersion: s.menu_version, menuItems: m?.items.length ?? 0,
       connected: this.connected(s.id), accepting: Boolean(s.accepting), acceptingReason: s.accepting_reason, lastSeenAt: s.last_seen_at,
       pausedReason: s.paused_reason, open: this.availability(s, m),
       openOrders: count(`SELECT COUNT(*) AS n FROM orders WHERE store_id = ? AND state IN (${OPEN_STATES})`, s.id),
@@ -323,6 +334,7 @@ export class Hub {
     return {
       hub: { devOtp: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.opts.sendSms), routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
       settings: this.settings(), stores,
+      posTypes: Object.values(PRODUCTS).map((p) => ({ code: p.code, name: p.name, app: p.app })),
     };
   }
 

@@ -124,6 +124,7 @@
       <p class="muted" style="margin:0">You get a connection link. The shop pastes it into its POS (Settings &gt; Online orders &gt; Order hub) and is connected.</p>
       <form id="addForm" class="grid">
         <div><label for="newName">Store name</label><input id="newName" maxlength="80" required placeholder="Spice Garden Indiranagar"></div>
+        <div><label for="newPosType">POS type</label><select id="newPosType" required><option value="">Choose…</option></select></div>
         <div><label for="newSlug">Store address</label><input id="newSlug" maxlength="41" required placeholder="kalyan-nagar" pattern="[a-z0-9][a-z0-9\-]{2,40}">
           <div class="hint">Lowercase letters, digits and dashes. Used in the ordering link; cannot be changed later.</div></div>
       </form>
@@ -384,15 +385,22 @@
   }
 
   // ------------------------------------------------------------ stores list
+  const posTypeName = (code) => (overview.posTypes ?? []).find((p) => p.code === code)?.name ?? null;
+  const posTypeChip = (s) => posTypeName(s.posType) ? chip('plain', posTypeName(s.posType)) : chip('warn', 'POS type not set');
+  function fillPosTypes(sel, value) {
+    sel.replaceChildren(h('option', { value: '' }, sel.id === 'newPosType' ? 'Choose…' : 'Not set'), ...(overview.posTypes ?? []).map((p) => h('option', { value: p.code }, `${p.name} (${p.app})`)));
+    sel.value = value ?? '';
+  }
   function statusChips(s) {
     return [s.connected ? chip('ok', 'POS online') : chip('bad', 'POS offline'), s.pausedReason ? chip('bad', 'Paused by hub') : null,
       s.accepting ? chip('ok', 'Shift open') : chip('warn', 'Not accepting'), s.open.open ? chip('ok', 'Customers can order') : null];
   }
   function renderStores() {
     const list = $('storeList');
+    if (!$('newPosType').options.length || $('newPosType').options.length === 1) fillPosTypes($('newPosType'), $('newPosType').value);
     if (!overview.stores.length) { list.replaceChildren(h('div', { class: 'card muted' }, 'No stores yet. Add the first one below.')); return; }
     list.replaceChildren(...overview.stores.map((s) => h('div', { class: 'card storecard', onclick: () => { location.hash = `#stores/${encodeURIComponent(s.slug)}`; } },
-      h('div', { class: 'row between' }, h('div', {}, h('h3', { style: 'margin:0' }, s.name), h('div', { class: 'muted' }, `/order/${s.slug}`)), h('div', { class: 'row' }, statusChips(s))),
+      h('div', { class: 'row between' }, h('div', {}, h('h3', { style: 'margin:0' }, s.name, ' ', posTypeChip(s)), h('div', { class: 'muted' }, `/order/${s.slug}`)), h('div', { class: 'row' }, statusChips(s))),
       h('div', { class: 'stats' }, h('div', {}, h('b', {}, s.openOrders), 'open orders'), h('div', {}, h('b', {}, s.ordersLastDay), 'orders in 24 h'),
         h('div', {}, h('b', {}, s.menuVersion ? `v${s.menuVersion}` : '-'), `menu, ${s.menuItems} items`), h('div', {}, h('b', {}, s.devices.filter((d) => !d.revokedAt).length), 'POS connected'),
         h('div', {}, h('b', {}, ago(s.lastSeenAt)), 'POS last seen')))));
@@ -412,7 +420,7 @@
     ev.preventDefault();
     $('addErr').textContent = '';
     try {
-      const s = await api('POST', '/v1/admin/stores', { slug: $('newSlug').value.trim(), name: $('newName').value.trim() });
+      const s = await api('POST', '/v1/admin/stores', { slug: $('newSlug').value.trim(), name: $('newName').value.trim(), posType: $('newPosType').value });
       $('addForm').reset();
       ui.links.set(s.slug, s);
       $('addResult').replaceChildren(linkBox(s, `Store "${s.name}" added. Send this connection link to the shop:`));
@@ -555,11 +563,16 @@
     const pauseInput = h('input', { maxlength: '200', placeholder: 'This store is not taking online orders right now.' });
     box.replaceChildren(
       h('p', { style: 'margin:14px 0 0' }, h('a', { href: '#stores' }, '← All stores')),
-      h('div', { class: 'row between' }, h('div', {}, h('h2', { style: 'margin-bottom:0' }, s.name), h('div', { class: 'muted' }, `Ordering page: `, h('a', { href: `/order/${encodeURIComponent(s.slug)}`, target: '_blank', rel: 'noopener' }, `/order/${s.slug}`))), h('div', { class: 'row' }, statusChips(s))),
+      h('div', { class: 'row between' }, h('div', {}, h('h2', { style: 'margin-bottom:0' }, s.name, ' ', posTypeChip(s)), h('div', { class: 'muted' }, `Ordering page: `, h('a', { href: `/order/${encodeURIComponent(s.slug)}`, target: '_blank', rel: 'noopener' }, `/order/${s.slug}`))), h('div', { class: 'row' }, statusChips(s))),
       !s.open.open && s.open.reason ? h('div', { class: 'banner info' }, `Customers see: "${s.open.reason}"`) : null,
       h('div', { class: 'card' },
         h('div', { class: 'stats', style: 'margin-top:0' }, h('div', {}, h('b', {}, s.openOrders), 'open orders'), h('div', {}, h('b', {}, s.ordersLastDay), 'orders in 24 h'),
           h('div', {}, h('b', {}, ago(s.lastSeenAt)), 'POS last seen'), h('div', {}, h('b', {}, when(s.createdAt)), 'added')),
+        h('div', { class: 'row', style: 'margin-top:10px' }, h('label', { for: 'storePosType', style: 'margin:0' }, 'POS type'), (() => {
+          const sel = h('select', { id: 'storePosType', onchange: async () => { try { await api('PUT', `/v1/admin/stores/${encodeURIComponent(slug)}/pos-type`, { posType: sel.value || null }); await refresh(); renderStore(slug); } catch (e) { err.textContent = e.message; } } });
+          fillPosTypes(sel, s.posType);
+          return sel;
+        })()),
         h('div', { class: 'actions' },
           h('button', { onclick: () => { ui.orderStore = slug; location.hash = '#orders'; } }, 'View orders'),
           h('button', { onclick: async () => { try { ui.links.set(slug, await api('POST', `/v1/admin/stores/${encodeURIComponent(slug)}/pairing-code`)); renderStore(slug); } catch (e) { err.textContent = e.message; } } }, 'New connection link'),

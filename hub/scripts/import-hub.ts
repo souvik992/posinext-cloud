@@ -14,6 +14,8 @@ import { importHub, ImportConflict } from '../src/importHub.ts';
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
 const from = arg('--from'), to = arg('--to');
 const dry = process.argv.includes('--dry-run');
+// the POS type of imported stores that do not say (default: Tiffin QSR, the hub this script was written for)
+const posType = arg('--pos-type') ?? 'tiffin_qsr';
 if (!from || !to) { console.error('usage: node scripts/import-hub.ts --from <old hub data dir> --to <PosiNext Cloud data dir> [--dry-run]'); process.exit(2); }
 const srcDb = join(from, 'hub.db');
 if (!existsSync(srcDb)) { console.error(`No hub database at ${srcDb}.`); process.exit(2); }
@@ -35,7 +37,7 @@ const target = new Hub({ dbPath: join(targetDir, 'hub.db') }); // opening it bri
 const source = new DatabaseSync(srcDb, { readOnly: true });
 let code = 0;
 try {
-  const r = importHub(target.db, source);
+  const r = importHub(target.db, source, { posType });
   const rows = Object.entries(r.tables).map(([t, x]) => `  ${t.padEnd(14)} ${String(x.copied).padStart(7)} copied ${String(x.alreadyHere).padStart(7)} already here`);
   console.log(`${dry ? 'DRY RUN (nothing changed). ' : ''}Imported ${from} into ${to}:\n${rows.join('\n')}`);
   for (const x of r.renamed) console.log(`  ! ${x.kind} "${x.from}" was taken here: now "${x.to}" (its ordering page is /order/${x.to}; tell the shop)`);

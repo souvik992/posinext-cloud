@@ -365,7 +365,8 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   // A connection link carries the hub address and a one-use pairing code: the shop pastes only this into its POS.
   const base = (c: Ctx) => (o.publicUrl ?? `${String(c.req.headers['x-forwarded-proto'] ?? 'http').split(',')[0]!.trim()}://${String(c.req.headers['x-forwarded-host'] ?? c.req.headers.host ?? 'localhost')}`).replace(/\/+$/, '');
   const withLink = <T extends { pairingCode: string }>(c: Ctx, r: T) => ({ ...r, connectUrl: `${base(c)}/connect/${r.pairingCode}` });
-  add('POST', '/v1/admin/stores', (c) => { admin(c); const b = c.body as { slug?: string; name?: string }; return withLink(c, hub.createStore(String(b?.slug ?? ''), String(b?.name ?? ''))); });
+  add('POST', '/v1/admin/stores', (c) => { admin(c); const b = c.body as { slug?: string; name?: string; posType?: string | null }; return withLink(c, hub.createStore(String(b?.slug ?? ''), String(b?.name ?? ''), (b?.posType || null) as never)); });
+  add('PUT', '/v1/admin/stores/:slug/pos-type', (c) => { admin(c); return hub.setPosType(c.params.slug!, (c.body as { posType?: unknown } | null)?.posType ?? null); });
   add('POST', '/v1/admin/stores/:slug/pairing-code', (c) => { admin(c); return withLink(c, hub.pairingCodeWithExpiry(c.params.slug!)); });
   add('GET', '/v1/admin/stores/:slug', (c) => { admin(c); return hub.adminStore(c.params.slug!); });
   add('GET', '/v1/admin/orders', (c) => { admin(c); return hub.adminOrders({ slug: c.query.get('store') || undefined, status: c.query.get('status') ?? 'all', limit: Number(c.query.get('limit') ?? 100) }); });

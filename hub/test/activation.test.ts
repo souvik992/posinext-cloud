@@ -26,6 +26,8 @@ test('activation: a trial gives a 30-day cloud key for this PC, makes the accoun
     assert.equal(r.json.kind, 'trial');
     assert.match(r.json.store.slug, /^spice-garden-salt-lake-\d{4}$/);
     assert.equal(r.json.store.name, 'Spice Garden Salt Lake');
+    const listed = ((await h.call('GET', '/v1/admin/overview', { admin: true })).json.stores as Array<{ slug: string; posType: string }>).find((s) => s.slug === r.json.store.slug);
+    assert.equal(listed?.posType, 'fine_dine', 'the outlet made on activation has the app\'s POS type');
     const v = verifyKey(r.json.key, trusted, HW);
     assert.ok(v.ok, v.ok ? '' : v.reason);
     if (v.ok) {

@@ -118,7 +118,7 @@ export class Demos {
     const host = this.o.host!, seed = this.seed!;
     const account = one<{ name: string }>(this.hub.db, 'SELECT name FROM account WHERE id = ?', u.account_id)!;
     const slug = this.freeSlug();
-    const st = this.hub.createStore(slug, `Demo: ${account.name}`.slice(0, 80));
+    const st = this.hub.createStore(slug, `Demo: ${account.name}`.slice(0, 80), 'fine_dine'); // the browser demo is DinePOS
     const now = this.hub.now();
     exec(this.hub.db, "INSERT INTO demo (store_id, slug, account_id, user_id, state, created_at, expires_at) VALUES (?,?,?,?,'starting',?,?)", st.storeId, slug, u.account_id, u.id, now, now + this.o.hours * 3_600_000);
     this.o.log?.info('browser demo starting', { slug, account: u.account_id });

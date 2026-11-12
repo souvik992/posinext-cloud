@@ -32,7 +32,7 @@ test('importing the Tiffin hub: stores, paired POS PCs, menus and orders come ac
     upRow(cloud.hub.db, '324255', 'upt_cloud');
 
     const src = new DatabaseSync(join(dir, 'tiffin.db'), { readOnly: true });
-    const r = importHub(cloud.hub.db, src);
+    const r = importHub(cloud.hub.db, src, { posType: 'tiffin_qsr' });
     src.close();
     assert.equal(r.tables.store!.copied, 3);
     assert.equal(r.tables.device!.copied, 1);
@@ -47,6 +47,9 @@ test('importing the Tiffin hub: stores, paired POS PCs, menus and orders come ac
     assert.equal((await cloud.call('GET', '/v1/pos/orders', { headers: { authorization: `Bearer ${dev.deviceKey}` } })).status, 200);
     assert.equal((await cloud.call('GET', '/v1/stores/demo-qsr')).json.name, 'Tiffin Demo');
     assert.equal((await cloud.call('GET', '/v1/stores/shared')).json.name, 'Cloud Shared', 'the store already here keeps its address');
+    // the imported stores are QSR; the cloud's own store keeps what it had
+    const types = Object.fromEntries(((await cloud.call('GET', '/v1/admin/overview', { admin: true })).json.stores as Array<{ slug: string; posType: string | null }>).map((s) => [s.slug, s.posType]));
+    assert.deepEqual(types, { contai: 'tiffin_qsr', 'demo-qsr': 'tiffin_qsr', 'shared-qsr': 'tiffin_qsr', shared: null });
 
     // UrbanPiper webhooks registered by the Tiffin hub (old header, old token) still get in; a wrong token does not
     const hook = (headers: Record<string, string>) => cloud.call('POST', '/v1/urbanpiper/324255', { body: {}, headers: { ...headers, 'x-upr-event-type': '60015' } });

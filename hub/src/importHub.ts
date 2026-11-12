@@ -35,7 +35,7 @@ export class ImportConflict extends Error {}
  * "<slug>-qsr" (then -qsr2, ...) and is reported (its ordering page address changes). Auto-numbered ids (log rows) get
  * new numbers. UrbanPiper: one account per hub; two different businesses stop the import (ImportConflict).
  */
-export function importHub(target: Db, source: Db, o: { slugSuffix?: string } = {}): ImportReport {
+export function importHub(target: Db, source: Db, o: { slugSuffix?: string; posType?: string } = {}): ImportReport {
   const report: ImportReport = { tables: {}, renamed: [], settingsKept: [], urbanpiper: 'none', legacyWebhookToken: null, storeIds: [] };
   const suffix = o.slugSuffix ?? 'qsr';
 
@@ -92,6 +92,11 @@ export function importHub(target: Db, source: Db, o: { slugSuffix?: string } = {
       report.tables[t] = { source: rows.length, copied, alreadyHere: rows.length - copied };
     }
     report.storeIds = (source.prepare('SELECT id FROM store').all() as Array<{ id: string }>).map((r) => r.id);
+    // the POS type of imported stores that do not say (the Tiffin hub has no such column: its stores are QSR)
+    if (o.posType) {
+      const set = target.prepare('UPDATE store SET pos_type = ? WHERE id = ? AND pos_type IS NULL');
+      for (const id of report.storeIds) set.run(o.posType, id);
+    }
 
     if (srcUp && !dstUp) {
       const cols = Object.keys(srcUp);

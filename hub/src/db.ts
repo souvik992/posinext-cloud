@@ -138,6 +138,12 @@ export function openHubDb(path: string): Db {
   for (const [col, type] of [['site_draft_json', 'TEXT'], ['site_published_at', 'INTEGER'], ['site_draft_at', 'INTEGER'], ['site_password_hash', 'TEXT'], ['menu_at', 'INTEGER']]) {
     if (!storeCols.has(col!)) db.exec(`ALTER TABLE store ADD COLUMN ${col} ${type}`);
   }
+  // the store's POS type (a product code, src/products.ts). Stores made before: the product of their newest licence key;
+  // stores without one stay unknown until the admin page sets it.
+  if (!storeCols.has('pos_type')) {
+    db.exec('ALTER TABLE store ADD COLUMN pos_type TEXT');
+    if (tableHas(db, 'licence_grant', 'product')) db.exec('UPDATE store SET pos_type = (SELECT g.product FROM licence_grant g WHERE g.store_id = store.id ORDER BY g.issued_at DESC LIMIT 1)');
+  }
   // P8-06 (ADR-0007): the products an account chose (QSR, Fine Dine or both); accounts made before chose Fine Dine
   const accountCols = new Set((db.prepare('PRAGMA table_info(account)').all() as Array<{ name: string }>).map((c) => c.name));
   if (!accountCols.has('products_json')) db.exec(`ALTER TABLE account ADD COLUMN products_json TEXT NOT NULL DEFAULT '["fine_dine"]'`);
@@ -154,6 +160,8 @@ CREATE TRIGGER licence_grant_only_revoke BEFORE UPDATE ON licence_grant
   BEGIN SELECT RAISE(ABORT, 'licence_grant is append-only: only a revoke may be recorded'); END;`);
   return db;
 }
+
+const tableHas = (db: Db, table: string, col: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((c) => c.name === col);
 
 type P = string | number | bigint | null | Uint8Array;
 export const one = <T>(db: Db, sql: string, ...p: P[]) => db.prepare(sql).get(...p) as T | undefined;

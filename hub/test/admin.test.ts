@@ -278,3 +278,52 @@ test('hub admin: order attempts that fail before an order exists (store offline,
     await s.close();
   } finally { await h.close(); cleanup(h.dir); }
 });
+
+test('hub admin: each store has a POS type: chosen when it is added, shown in the stores list, changed on its page', async () => {
+  const h = await startHub();
+  try {
+    const add = (body: Record<string, unknown>) => h.call('POST', '/v1/admin/stores', { admin: true, body });
+    assert.equal((await add({ slug: 'kirana-one', name: 'Kirana One', posType: 'grocery' })).status, 200);
+    assert.equal((await add({ slug: 'no-type', name: 'No Type' })).status, 200, 'not chosen: not known yet');
+    assert.equal((await add({ slug: 'bad-type', name: 'Bad Type', posType: 'bakery' })).status, 400);
+    const overview = (await h.call('GET', '/v1/admin/overview', { admin: true })).json;
+    assert.deepEqual(overview.posTypes.map((p: { code: string }) => p.code), ['fine_dine', 'tiffin_qsr', 'grocery', 'apparel', 'pharmacy']);
+    const type = (slug: string) => overview.stores.find((s: { slug: string }) => s.slug === slug)?.posType;
+    assert.equal(type('kirana-one'), 'grocery');
+    assert.equal(type('no-type'), null);
+    assert.equal(type('bad-type'), undefined, 'refused, not made');
+
+    const set = (slug: string, posType: unknown, admin = true) => h.call('PUT', `/v1/admin/stores/${slug}/pos-type`, { admin, body: { posType } });
+    assert.equal((await set('no-type', 'tiffin_qsr')).status, 200);
+    assert.equal((await h.call('GET', '/v1/admin/stores/no-type', { admin: true })).json.posType, 'tiffin_qsr');
+    assert.equal((await set('no-type', 'bakery')).status, 400);
+    assert.equal((await set('no-type', null)).status, 200);
+    assert.equal((await h.call('GET', '/v1/admin/stores/no-type', { admin: true })).json.posType, null);
+    assert.equal((await set('no-type', 'grocery', false)).status, 403, 'admin only');
+    assert.equal((await set('nobody', 'grocery')).status, 404);
+  } finally { await h.close(); cleanup(h.dir); }
+});
+
+test('hub admin: stores from before POS types get the product of their newest licence key; the rest are not set', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'hub-postype-'));
+  const old = new DatabaseSync(join(dir, 'hub.db'));
+  old.exec(`CREATE TABLE store (id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE, name TEXT NOT NULL, created_at INTEGER NOT NULL, menu_json TEXT, menu_version INTEGER NOT NULL DEFAULT 0,
+    accepting INTEGER NOT NULL DEFAULT 0, accepting_reason TEXT, order_counter INTEGER NOT NULL DEFAULT 1000, last_seen_at INTEGER);
+    CREATE TABLE licence_grant (id TEXT PRIMARY KEY, account_id TEXT, store_id TEXT NOT NULL, hardware_id TEXT NOT NULL, kind TEXT NOT NULL, licensee TEXT NOT NULL,
+      seats_json TEXT NOT NULL, features_json TEXT NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, key_text TEXT NOT NULL, revoked_at INTEGER,
+      revoked_reason TEXT, created_by TEXT NOT NULL, product TEXT NOT NULL DEFAULT 'fine_dine');
+    INSERT INTO store (id, slug, name, created_at) VALUES ('s1', 'qsr-outlet', 'QSR Outlet', 1), ('s2', 'dine-outlet', 'Dine Outlet', 1), ('s3', 'order-only', 'Order Only', 1);
+    INSERT INTO licence_grant VALUES ('g1', NULL, 's1', 'HW', 'trial', 'x', '{}', '[]', 1, 2, 'k', NULL, NULL, 'test', 'fine_dine');
+    INSERT INTO licence_grant VALUES ('g2', NULL, 's1', 'HW', 'paid', 'x', '{}', '[]', 5, 9, 'k', NULL, NULL, 'test', 'tiffin_qsr');
+    INSERT INTO licence_grant VALUES ('g3', NULL, 's2', 'HW', 'trial', 'x', '{}', '[]', 1, 2, 'k', NULL, NULL, 'test', 'fine_dine');`);
+  old.close();
+  const h = await startHub(dir);
+  try {
+    const stores = (await h.call('GET', '/v1/admin/overview', { admin: true })).json.stores as Array<{ slug: string; posType: string | null }>;
+    assert.deepEqual(Object.fromEntries(stores.map((s) => [s.slug, s.posType])), { 'dine-outlet': 'fine_dine', 'order-only': null, 'qsr-outlet': 'tiffin_qsr' });
+  } finally { await h.close(); cleanup(h.dir); }
+});

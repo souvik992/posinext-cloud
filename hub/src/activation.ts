@@ -124,7 +124,7 @@ export class Activations {
       const s = `${base.length < 3 ? `${base}-outlet` : base}-${String(randomInt(1000, 10000))}`;
       if (!one(this.hub.db, 'SELECT 1 FROM store WHERE slug = ? UNION ALL SELECT 1 FROM brand WHERE slug = ?', s, s)) slug = s;
     }
-    const st = this.hub.createStore(slug, outletName);
+    const st = this.hub.createStore(slug, outletName, product);
     exec(this.hub.db, 'INSERT INTO account_store (store_id, account_id, added_at) VALUES (?,?,?)', st.storeId, accountId, this.hub.now());
     return st.storeId;
   }
