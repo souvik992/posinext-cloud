@@ -50,7 +50,7 @@ test('downloads: the newest build of each app and add-on, per product; an add-on
     const r = await h.call('GET', '/v1/downloads');
     assert.equal(r.status, 200);
     const by = Object.fromEntries((r.json.downloads as Array<{ id: string }>).map((d) => [d.id, d])) as Record<string, Record<string, unknown>>;
-    assert.deepEqual(Object.keys(by), ['dinepos', 'dinepos-tableqr', 'dinepos-kitchen', 'dinepos-captain', 'tiffin', 'tiffin-ods']);
+    assert.deepEqual(Object.keys(by), ['dinepos', 'dinepos-tableqr', 'dinepos-kitchen', 'dinepos-captain', 'tiffin', 'tiffin-ods', 'posinext-grocery', 'posinext-grocery-edc', 'posinext-apparel', 'posinext-apparel-edc', 'posinext-pharmacy', 'posinext-pharmacy-edc']);
     assert.deepEqual([by['dinepos-kitchen']!.kind, by['dinepos-kitchen']!.product, by['dinepos-kitchen']!.available], ['addon', 'fine_dine', false], 'KDS: listed, not built yet');
     assert.deepEqual([by['dinepos-captain']!.kind, by['dinepos-captain']!.product, by['dinepos-captain']!.available], ['addon', 'fine_dine', false], 'Captain APK: listed, not built yet');
     assert.deepEqual([by.dinepos!.version, by.dinepos!.build, by.dinepos!.product, by.dinepos!.app], ['0.1.7', '12', 'fine_dine', 'DinePOS']);
@@ -85,7 +85,7 @@ test('downloads: GitHub down keeps the last list (also after a restart); nothing
   const e = await startHub(undefined, undefined, undefined, { githubFetch: empty.f });
   try {
     const r = await e.call('GET', '/v1/downloads');
-    assert.deepEqual((r.json.downloads as Array<{ available: boolean; version: unknown }>).map((d) => [d.available, d.version]), [[false, null], [false, null], [false, null], [false, null], [false, null], [false, null]]);
+    assert.deepEqual((r.json.downloads as Array<{ available: boolean; version: unknown }>).map((d) => [d.available, d.version]), Array.from({ length: 12 }, () => [false, null]));
   } finally { await e.close(); cleanup(e.dir); }
 });
 
