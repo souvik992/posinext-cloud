@@ -33,7 +33,10 @@ const NAME: Record<Platform, string> = { swiggy: 'Swiggy', zomato: 'Zomato' };
 export const EVENTS = ['order_placed', 'order_status_update', 'rider_status_update', 'store_creation', 'store_action', 'item_state_toggle', 'option_state_toggle', 'inventory_update', 'hub_menu_publish'];
 /** X-UPR-Event-Type codes (api/references/webhook-event-headers). */
 const EVENT_CODE: Record<string, string> = { '18': 'order', '60008': 'status', '60012': 'rider', '60013': 'Menu', '60014': 'Store details', '60015': 'Store on/off', '12004': 'Items on/off', '12005': 'Options on/off', '12002': 'Menu published', '60016': 'Category timings', '60018': 'Items out of stock', '60017': 'Order feature', '60019': 'Order retry' };
-export const TOKEN_HEADER = 'x-dinepos-token';
+export const TOKEN_HEADER = 'x-posinext-token';
+/** Header names the hubs merged into PosiNext Cloud registered their webhooks with, still accepted until the order
+ * links are set up again here (Hub settings > Set up order links). */
+export const LEGACY_TOKEN_HEADERS = ['x-dinepos-token', 'x-tiffin-token'];
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const OTHER_CATEGORY = { ref_id: 'dinepos-other', name: 'Other' };
 /** Our reject reasons as UrbanPiper reason codes (order-status-update). An item that is out of stock is sent as
@@ -539,8 +542,10 @@ export class UrbanPiper {
   /** POST /v1/urbanpiper/<bizId>. Throws 401 for a wrong secret, 422 (UrbanPiper does not retry) for what can never work. */
   webhook(bizId: string, headers: Record<string, string | string[] | undefined>, body: unknown): unknown {
     const a = this.account();
-    const got = String(headers[TOKEN_HEADER] ?? '');
-    if (!a || a.biz_id !== bizId || !sameSecret(a.webhook_token, got)) throw new HubError('FORBIDDEN', 'Unknown UrbanPiper business or wrong secret.', 401);
+    const got = String(headers[TOKEN_HEADER] ?? LEGACY_TOKEN_HEADERS.map((h) => headers[h]).find((v) => v !== undefined) ?? '');
+    // a merged hub's webhook token (importHub) keeps working until the webhooks are set up again here
+    const legacy = JSON.parse(one<{ value_json: string }>(this.hub.db, "SELECT value_json FROM setting WHERE key = 'up_legacy_webhook_tokens'")?.value_json ?? '[]') as string[];
+    if (!a || a.biz_id !== bizId || !(sameSecret(a.webhook_token, got) || legacy.some((t) => sameSecret(t, got)))) throw new HubError('FORBIDDEN', 'Unknown UrbanPiper business or wrong secret.', 401);
     const links = many<LinkRow>(this.hub.db, 'SELECT * FROM up_link');
     const code = String(headers['x-upr-event-type'] ?? '');
     const kind = EVENT_CODE[code] ?? (obj(obj(body).order).details ? 'order' : `Event ${code || '?'}`);
