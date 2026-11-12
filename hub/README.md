@@ -1,10 +1,10 @@
 # PosiNext Cloud
 
-The cloud service for **DinePOS (fine dine) only**: its own server, its own data, its own admin key. It is separate
-from the Tiffin POS hub, and you install it on its own AWS server. It started as a copy of the Tiffin order hub
-(pos-backend `hub/`) and is cut down to what DinePOS uses.
+The one cloud service for every PosiNext product: Fine Dine (DinePOS), Tiffin QSR, and PosiNext Grocery, Apparel and
+Pharmacy. Since 2026-11-12 it is DinePOS Cloud and the Tiffin order hub merged (fine-dine ADR-0008); a server running
+either one moves over as described in the repository's README.
 
-What it does today (P6-01):
+What it does:
 - **Online orders from your website**: store page, delivery quotes, OTP, orders sent live to the DinePOS online orders
   screen, accept/reject/status back to the customer.
 - **Swiggy and Zomato through UrbanPiper.**
