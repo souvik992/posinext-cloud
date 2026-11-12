@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order online</title>
+<style>
+  :root { --bg: #f6f2ec; --card: #fff; --text: #3a2a1f; --muted: #8a7b6e; --primary: #ea580c; --line: #eadfd3; --veg: #16a34a; --nonveg: #b91c1c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  h1 { margin: 0; font-size: 20px; } h2 { font-size: 16px; margin: 18px 0 8px; }
+  main { max-width: 640px; margin: 0 auto; padding: 0 16px 140px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .banner { margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: #fee2e2; color: #7f1d1d; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 8px; }
+  .item .name { flex: 1; } .dot { width: 10px; height: 10px; border-radius: 2px; border: 2px solid; display: inline-block; margin-right: 6px; }
+  button { font: inherit; border: 0; border-radius: 10px; padding: 9px 14px; background: var(--primary); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--text); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  .qty { display: inline-flex; align-items: center; gap: 8px; } .qty button { padding: 4px 11px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 10px 0; }
+  label { display: block; font-size: 13px; margin: 8px 0 3px; } input, textarea { width: 100%; font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+  .row { display: flex; gap: 8px; } .row > * { flex: 1; }
+  .chips { display: flex; gap: 8px; } .chips button { flex: 1; } .chips button.on { outline: 2px solid var(--primary); }
+  .sum div { display: flex; justify-content: space-between; } .sum .total { font-weight: 700; font-size: 17px; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line); padding: 12px 16px; }
+  .bar .in { max-width: 640px; margin: 0 auto; display: flex; gap: 10px; align-items: center; } .bar .in > div { flex: 1; }
+  .err { color: #b91c1c; font-size: 13px; margin-top: 6px; } .ok { color: var(--veg); }
+  .steps { list-style: none; padding: 0; } .steps li { padding: 6px 0 6px 22px; position: relative; color: var(--muted); } .steps li.done { color: var(--text); }
+  .steps li::before { content: ""; position: absolute; left: 4px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--line); } .steps li.done::before { background: var(--veg); }
+</style>
+</head>
+<body>
+<header><h1 id="name">Loading…</h1><div class="muted" id="sub"></div></header>
+<main id="app"></main>
+<div class="bar" id="bar" hidden><div class="in"><div><div id="barTotal"></div><div class="muted" id="barNote"></div></div><button id="checkout">Checkout</button></div></div>
+<script>
+let SLUG = __STORE__;
+// brand website (P6-05): the customer gives their location first; the hub chooses the outlet, whose menu is then shown
+const BRAND = __BRAND__, BRAND_SLUG = SLUG;
+const $ = (s) => document.querySelector(s);
+const rs = (p) => '₹' + (p / 100).toFixed(2);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const api = async (method, path, body, extra = {}) => {
+  const r = await fetch(path, { method, headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...extra }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw Object.assign(new Error(j?.error?.message ?? 'Something went wrong.'), { code: j?.error?.code, details: j?.error?.details });
+  return j;
+};
+let store, cart = new Map(), mode = 'PICKUP', loc = null, quote = null, otpToken = null;
+let brand = null, near = null, outlet = null, notice = '';
+
+async function loadBrand() {
+  brand = await api('GET', `/v1/brands/${encodeURIComponent(BRAND_SLUG)}`);
+  document.title = brand.name; $('#name').textContent = brand.name;
+  $('#sub').textContent = `${brand.outlets.length} outlet${brand.outlets.length === 1 ? '' : 's'}: we send your order to the nearest one`;
+  if (!brand.fulfilment.pickup && brand.fulfilment.delivery) mode = 'DELIVERY';
+  renderWhere();
+}
+function renderWhere(err = '') {
+  $('#bar').hidden = true;
+  $('#app').innerHTML = `
+    <h2>Where are you?</h2>
+    <div class="card">
+      <div class="chips">${brand.fulfilment.pickup ? `<button class="ghost ${mode === 'PICKUP' ? 'on' : ''}" id="pick">Pickup</button>` : ''}${brand.fulfilment.delivery ? `<button class="ghost ${mode === 'DELIVERY' ? 'on' : ''}" id="deliv">Delivery</button>` : ''}</div>
+      <p class="muted">${mode === 'DELIVERY' ? 'We send your order to the nearest outlet that delivers to you.' : 'We send your order to the nearest open outlet; you collect it there.'}</p>
+      <button class="ghost" id="gps">Use my current location</button><span class="muted" id="gpsText"></span>
+      <div class="row"><div><label>Latitude</label><input id="lat" value="${near?.lat ?? ''}"></div><div><label>Longitude</label><input id="lng" value="${near?.lng ?? ''}"></div></div>
+      <p><button id="find">Find my outlet</button></p>
+      <div class="err" id="err">${esc(err)}</div>
+    </div>`;
+  if ($('#pick')) $('#pick').onclick = () => { mode = 'PICKUP'; renderWhere(); };
+  if ($('#deliv')) $('#deliv').onclick = () => { mode = 'DELIVERY'; renderWhere(); };
+  $('#gps').onclick = () => navigator.geolocation.getCurrentPosition((p) => { near = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }; $('#lat').value = near.lat; $('#lng').value = near.lng; }, () => { $('#gpsText').textContent = ' Could not read your location; type it below.'; });
+  $('#find').onclick = async () => {
+    const la = parseFloat($('#lat').value), ln = parseFloat($('#lng').value);
+    if (!isFinite(la) || !isFinite(ln)) { $('#err').textContent = 'Share or type your location first.'; return; }
+    near = { lat: la, lng: ln };
+    try { await findOutlet(); renderMenu(); } catch (e) { renderWhere(e.message); }
+  };
+}
+/** Asks the hub which outlet gets the order now (mode + near) and switches to its menu. */
+async function findOutlet() {
+  useOutlet(await api('POST', `/v1/brands/${encodeURIComponent(BRAND_SLUG)}/outlet`, { fulfilment: mode, location: near }));
+}
+/** Shows this outlet's menu; cart items it does not sell are taken out (and the customer is told). */
+function useOutlet(r) {
+  const before = SLUG;
+  outlet = r; store = r.outlet; SLUG = store.slug; quote = null;
+  if (mode === 'DELIVERY') loc = near;
+  const sells = new Set(store.menu ? store.menu.items.filter((i) => !i.modifierGroupIds.length).map((i) => i.id) : []);
+  const gone = [...cart.keys()].filter((id) => !sells.has(id));
+  for (const id of gone) cart.delete(id);
+  notice = before !== SLUG && before !== BRAND_SLUG ? `Your order now comes from ${store.name}.${gone.length ? ` ${gone.length} item${gone.length > 1 ? 's' : ''} not sold there ${gone.length > 1 ? 'were' : 'was'} taken out of your cart.` : ''}` : '';
+  document.title = `${brand.name} · ${store.name}`;
+  $('#sub').textContent = `${mode === 'DELIVERY' ? 'Delivered' : 'Pickup'} from ${store.name}${r.distanceKm != null ? ` (${r.distanceKm} km)` : ''}`;
+}
+
+async function load() {
+  store = await api('GET', `/v1/stores/${encodeURIComponent(SLUG)}`);
+  document.title = store.name; $('#name').textContent = store.name;
+  $('#sub').textContent = store.open ? 'Open now: order for pickup or delivery' : store.reason;
+  if (!store.menu) { $('#app').innerHTML = `<div class="banner">${esc(store.reason)}</div>`; return; }
+  renderMenu();
+}
+function renderMenu() {
+  const cats = [...store.menu.categories].sort((a, b) => a.sort - b.sort);
+  const groups = cats.map((c) => [c.name, store.menu.items.filter((i) => i.categoryId === c.id)]).filter(([, it]) => it.length);
+  const other = store.menu.items.filter((i) => !cats.some((c) => c.id === i.categoryId));
+  if (other.length) groups.push(['More', other]);
+  const from = BRAND ? `<div class="card" id="outlet"><b>${mode === 'DELIVERY' ? 'Delivered' : 'Pickup'} from ${esc(store.name)}</b>${outlet.label ? `<div class="muted">${esc(outlet.label)}</div>` : ''}${outlet.distanceKm != null ? `<div class="muted">${outlet.distanceKm} km from you</div>` : ''}<p><button class="ghost" id="change">Change location or pickup/delivery</button></p></div>${notice ? `<div class="banner">${esc(notice)}</div>` : ''}` : '';
+  $('#app').innerHTML = from + (store.open ? '' : `<div class="banner">${esc(store.reason)}</div>`) + groups.map(([name, items]) => `<h2>${esc(name)}</h2>` + items.map((i) => `
+    <div class="item"><span class="dot" style="border-color:${i.isVeg === false ? 'var(--nonveg)' : 'var(--veg)'}"></span>
+      <div class="name">${esc(i.name)}<div class="muted">${rs(i.price)}${i.modifierGroupIds.length ? ' · options in the store app' : ''}</div></div>
+      <span class="qty"><button class="ghost" data-dec="${i.id}" ${cart.get(i.id) ? '' : 'hidden'}>−</button><b>${cart.get(i.id) || ''}</b><button data-inc="${i.id}" ${store.open && !i.modifierGroupIds.length ? '' : 'disabled'}>+</button></span>
+    </div>`).join('')).join('');
+  if ($('#change')) $('#change').onclick = () => renderWhere();
+  document.querySelectorAll('[data-inc]').forEach((b) => b.onclick = () => { cart.set(b.dataset.inc, (cart.get(b.dataset.inc) || 0) + 1); changed(); });
+  document.querySelectorAll('[data-dec]').forEach((b) => b.onclick = () => { const n = (cart.get(b.dataset.dec) || 0) - 1; n > 0 ? cart.set(b.dataset.dec, n) : cart.delete(b.dataset.dec); changed(); });
+  updateBar();
+}
+const lines = () => [...cart.entries()].map(([itemId, n]) => ({ itemId, qtyMilli: n * 1000 }));
+function changed() { quote = null; notice = ''; renderMenu(); }
+function updateBar() {
+  const n = [...cart.values()].reduce((a, b) => a + b, 0);
+  $('#bar').hidden = n === 0;
+  const items = store.menu.items.filter((i) => cart.has(i.id)).reduce((s, i) => s + i.price * cart.get(i.id), 0);
+  $('#barTotal').textContent = `${n} item${n > 1 ? 's' : ''} · ${rs(items)}`;
+  $('#barNote').textContent = 'Taxes included; delivery fee at checkout';
+  $('#checkout').onclick = checkout;
+}
+
+function checkout() {
+  $('#bar').hidden = true;
+  $('#app').innerHTML = `
+    <h2>Your order</h2>
+    <div class="chips">${store.fulfilment.pickup ? `<button class="ghost ${mode === 'PICKUP' ? 'on' : ''}" id="pick">Pickup</button>` : ''}${store.fulfilment.delivery ? `<button class="ghost ${mode === 'DELIVERY' ? 'on' : ''}" id="deliv">Delivery</button>` : ''}</div>
+    <div id="where"></div>
+    <div class="card sum" id="sum"><span class="muted">Working out the total…</span></div>
+    <div class="card">
+      <label>Name (optional)</label><input id="cname" autocomplete="name">
+      <label>Mobile number</label><div class="row"><input id="mobile" inputmode="numeric" maxlength="14" autocomplete="tel"><button class="ghost" id="sendOtp">Send code</button></div>
+      <div id="otpBox" hidden><label>Code from SMS</label><div class="row"><input id="otp" inputmode="numeric" maxlength="6"><button class="ghost" id="verify">Verify</button></div><div class="muted" id="devOtp"></div></div>
+      <div id="otpOk" class="ok" hidden>Mobile verified</div>
+      <label>Note for the store (optional)</label><textarea id="note" rows="2" maxlength="300"></textarea>
+      <p class="muted">Payment: cash on ${mode === 'DELIVERY' ? 'delivery' : 'pickup'}. Online payment is coming soon.</p>
+      <div class="row"><button class="ghost" id="back">Back to menu</button><button id="place" disabled>Place order</button></div>
+      <div class="err" id="err"></div>
+    </div>`;
+  $('#back').onclick = () => renderMenu();
+  // brand website: another fulfilment or address can mean another outlet (and its menu)
+  const again = async () => { if (!BRAND) return checkout(); try { await findOutlet(); notice ? renderMenu() : checkout(); } catch (e) { renderWhere(e.message); } };
+  if ($('#pick')) $('#pick').onclick = () => { mode = 'PICKUP'; again(); };
+  if ($('#deliv')) $('#deliv').onclick = () => { mode = 'DELIVERY'; again(); };
+  if (BRAND) $('#where').insertAdjacentHTML('beforebegin', `<p class="muted">From <b>${esc(store.name)}</b>${outlet.distanceKm != null ? ` · ${outlet.distanceKm} km` : ''}</p>`);
+  if (mode === 'DELIVERY') {
+    $('#where').innerHTML = `<div class="card"><button class="ghost" id="gps">Use my current location</button><span class="muted" id="gpsText"> ${loc ? 'Location set' : ''}</span>
+      <div class="row"><div><label>Latitude</label><input id="lat" value="${loc?.lat ?? ''}"></div><div><label>Longitude</label><input id="lng" value="${loc?.lng ?? ''}"></div></div>
+      <label>House / flat, street</label><input id="a1"><div class="row"><div><label>Landmark</label><input id="lm"></div><div><label>PIN code</label><input id="pin" inputmode="numeric" maxlength="6"></div></div>
+      <label>City</label><input id="city" value="Bengaluru"></div>`;
+    $('#gps').onclick = () => navigator.geolocation.getCurrentPosition((p) => { loc = { lat: +p.coords.latitude.toFixed(6), lng: +p.coords.longitude.toFixed(6) }; $('#lat').value = loc.lat; $('#lng').value = loc.lng; refreshQuote(); }, () => { $('#gpsText').textContent = ' Could not read your location; type it below.'; });
+    for (const id of ['#lat', '#lng']) $(id).onchange = async () => {
+      const la = parseFloat($('#lat').value), ln = parseFloat($('#lng').value); loc = isFinite(la) && isFinite(ln) ? { lat: la, lng: ln } : null;
+      if (BRAND && loc) { near = loc; try { await findOutlet(); if (notice) return renderMenu(); } catch (e) { return renderWhere(e.message); } }
+      refreshQuote();
+    };
+  }
+  $('#sendOtp').onclick = async () => {
+    $('#err').textContent = '';
+    try { const r = await api('POST', '/v1/otp/send', { mobile: $('#mobile').value }); $('#otpBox').hidden = false; $('#devOtp').textContent = r.devCode ? `Test mode: your code is ${r.devCode}` : ''; } catch (e) { $('#err').textContent = e.message; }
+  };
+  $('#verify').onclick = async () => {
+    $('#err').textContent = '';
+    try { otpToken = (await api('POST', '/v1/otp/verify', { mobile: $('#mobile').value, otp: $('#otp').value })).otpToken; $('#otpBox').hidden = true; $('#otpOk').hidden = false; $('#place').disabled = !quote; } catch (e) { $('#err').textContent = e.message; }
+  };
+  $('#place').onclick = place;
+  refreshQuote();
+}
+async function refreshQuote() {
+  quote = null; $('#place').disabled = true;
+  if (mode === 'DELIVERY' && !loc) { $('#sum').innerHTML = '<span class="muted">Set the delivery location to see the delivery fee.</span>'; return; }
+  try {
+    quote = await api('POST', `/v1/stores/${encodeURIComponent(SLUG)}/quote`, { fulfilment: mode, location: loc, lines: lines() });
+    $('#sum').innerHTML = `<div><span>Items</span><span>${rs(quote.itemsTotal)}</span></div>${quote.deliveryFee ? `<div><span>Delivery (${quote.distanceKm} km)</span><span>${rs(quote.deliveryFee)}</span></div>` : ''}${quote.packagingFee ? `<div><span>Packaging</span><span>${rs(quote.packagingFee)}</span></div>` : ''}<div class="total"><span>Total</span><span>${rs(quote.total)}</span></div><div class="muted">Ready in about ${quote.etaMinutes} minutes after the store accepts.</div>`;
+    $('#place').disabled = !otpToken;
+  } catch (e) { $('#sum').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+async function place() {
+  $('#err').textContent = ''; $('#place').disabled = true;
+  const body = { fulfilment: mode, payment: 'COD', customer: { name: $('#cname').value || null, mobile: $('#mobile').value }, otpToken, lines: lines(), note: $('#note').value || null, menuVersion: store.menu.version, expectedTotal: quote.total, channel: 'website', location: mode === 'DELIVERY' ? loc : null,
+    address: mode === 'DELIVERY' ? { line1: $('#a1').value, line2: null, landmark: $('#lm').value || null, city: $('#city').value, pincode: $('#pin').value } : null };
+  try {
+    const r = BRAND
+      ? await api('POST', `/v1/brands/${encodeURIComponent(BRAND_SLUG)}/orders`, { ...body, store: SLUG, near }, { 'idempotency-key': crypto.randomUUID() })
+      : await api('POST', `/v1/stores/${encodeURIComponent(SLUG)}/orders`, body, { 'idempotency-key': crypto.randomUUID() });
+    track(r.order, r.accessToken);
+  } catch (e) {
+    if (e.code === 'OUTLET_CHANGED' && e.details?.outlet) { useOutlet(e.details); notice = notice || e.message; return renderMenu(); }
+    if (e.code === 'NO_OUTLET') return renderWhere(e.message);
+    $('#err').textContent = e.message; $('#place').disabled = false; if (e.code === 'PRICE_CHANGED') refreshQuote();
+  }
+}
+const STEPS = { PICKUP: ['SENT_TO_STORE', 'ACCEPTED', 'PREPARING', 'READY', 'PICKED_UP'], DELIVERY: ['SENT_TO_STORE', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED'] };
+const NAMES = { SENT_TO_STORE: 'Sent to the store', RECEIVED: 'Sent to the store', ACCEPTED: 'Accepted', PREPARING: 'Being prepared', READY: 'Ready', OUT_FOR_DELIVERY: 'Out for delivery', DELIVERED: 'Delivered', PICKED_UP: 'Collected' };
+function track(order, token) {
+  const draw = (o) => {
+    const steps = STEPS[o.fulfilment]; const at = steps.indexOf(o.state === 'RECEIVED' ? 'SENT_TO_STORE' : o.state);
+    const end = ['REJECTED', 'AUTO_REJECTED', 'CANCELLED'].includes(o.state);
+    $('#app').innerHTML = `<h2>Order ${esc(o.number)}</h2><div class="card">${end ? `<div class="banner">${o.state === 'CANCELLED' ? 'Cancelled.' : 'Sorry, the store could not take this order.'} ${esc(o.reasonText ?? '')}</div>` :
+      `<ul class="steps">${steps.map((s, i) => `<li class="${i <= at ? 'done' : ''}">${NAMES[s]}${s === 'ACCEPTED' && o.etaAt && i <= at ? ` · about ${Math.max(0, Math.round((o.etaAt - Date.now()) / 60000))} min` : ''}${s === 'OUT_FOR_DELIVERY' && o.rider && i <= at ? ` · ${esc(o.rider.name)}${o.rider.phone ? ' ' + esc(o.rider.phone) : ''}` : ''}</li>`).join('')}</ul>`}
+      <div class="sum">${o.lines.map((l) => `<div><span>${l.qtyMilli / 1000} × ${esc(l.name)}</span><span>${rs(l.lineTotal)}</span></div>`).join('')}<div class="total"><span>Total (pay ${o.fulfilment === 'DELIVERY' ? 'on delivery' : 'at pickup'})</span><span>${rs(o.total)}</span></div></div>
+      ${['SENT_TO_STORE', 'RECEIVED'].includes(o.state) ? '<p><button class="ghost" id="cancel">Cancel order</button></p>' : ''}</div>`;
+    if ($('#cancel')) $('#cancel').onclick = () => api('POST', `/v1/orders/${o.id}/cancel`, {}, { 'x-order-token': token }).catch((e) => alert(e.message));
+  };
+  draw(order);
+  const es = new EventSource(`/v1/orders/${order.id}/events?token=${encodeURIComponent(token)}`);
+  es.addEventListener('order.state', (e) => { const d = JSON.parse(e.data); if (d.order) draw(d.order); });
+}
+(BRAND ? loadBrand() : load()).catch((e) => { $('#app').innerHTML = `<div class="banner">${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>

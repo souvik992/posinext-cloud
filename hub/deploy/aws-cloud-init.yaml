@@ -1,0 +1,130 @@
+#cloud-config
+# DinePOS Cloud on an AWS EC2 Ubuntu 24.04 server (t3.micro / t4g.micro).
+# Paste this whole file into EC2 > Launch instance > Advanced details > User data.
+# Replace __HUB_ADMIN_KEY__ with a long random secret first (hub/deploy/make-cloud-init.ts does it for you).
+#
+# What it does: installs Node 24 and Caddy, downloads the hub from GitHub, runs it as a service on 127.0.0.1:4900,
+# and puts Caddy in front with a free HTTPS certificate for <public-ip>.sslip.io (or HUB_DOMAIN if you set one).
+# Ports 80 and 443 are opened in the instance's security group (EC2 console), not here.
+
+package_update: true
+packages: [git, curl, sqlite3, debian-keyring, debian-archive-keyring, apt-transport-https, gnupg]
+
+write_files:
+  - path: /etc/dinepos-cloud.env
+    permissions: '0600'
+    content: |
+      HUB_ADMIN_KEY=__HUB_ADMIN_KEY__
+      HUB_HOST=127.0.0.1
+      HUB_PORT=4900
+      HUB_DATA_DIR=/var/lib/dinepos-cloud
+      # Set to your own domain (e.g. hub.example.in) once its DNS points at this VM, then run dinepos-cloud-domain.
+      HUB_DOMAIN=
+      # Off-server backups: an S3 bucket name (the VM needs an IAM role that may write to it). Empty: backups stay here.
+      HUB_S3_BUCKET=
+      # Alerts (hosted outlet down, backup failed): a Slack, Discord or Google Chat webhook address. Empty: no alerts.
+      HUB_ALERT_WEBHOOK=
+
+  - path: /etc/systemd/system/dinepos-cloud.service
+    content: |
+      [Unit]
+      Description=DinePOS Cloud (fine dine)
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      User=dineposcloud
+      EnvironmentFile=/etc/dinepos-cloud.env
+      Environment=NODE_ENV=production
+      WorkingDirectory=/opt/dinepos/cloud/hub
+      ExecStart=/usr/bin/node src/main.ts
+      Restart=always
+      RestartSec=3
+      NoNewPrivileges=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/var/lib/dinepos-cloud
+
+      [Install]
+      WantedBy=multi-user.target
+
+  # Points Caddy at HUB_DOMAIN, or <public-ip>.sslip.io when it is empty, and sets HUB_PUBLIC_URL to match.
+  - path: /usr/local/bin/dinepos-cloud-domain
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      . /etc/dinepos-cloud.env
+      domain="${HUB_DOMAIN:-}"
+      if [ -z "$domain" ]; then
+        ip=$(curl -fsS https://api.ipify.org)
+        domain="${ip//./-}.sslip.io"
+      fi
+      cat > /etc/caddy/Caddyfile <<EOF
+      # P6-02: each outlet's device address <store>.$domain gets its own certificate on demand, only for stores the
+      # cloud knows (it answers /v1/tls-ask).
+      {
+        on_demand_tls {
+          ask http://127.0.0.1:4900/v1/tls-ask
+        }
+      }
+      $domain {
+        encode gzip
+        reverse_proxy 127.0.0.1:4900 {
+          flush_interval -1
+        }
+      }
+      *.$domain {
+        tls {
+          on_demand
+        }
+        encode gzip
+        reverse_proxy 127.0.0.1:4900 {
+          flush_interval -1
+        }
+      }
+      EOF
+      bash /opt/dinepos/cloud/hub/deploy/portal.sh --caddy-only || true
+      sed -i '/^HUB_PUBLIC_URL=/d' /etc/dinepos-cloud.env
+      echo "HUB_PUBLIC_URL=https://$domain" >> /etc/dinepos-cloud.env
+      systemctl restart dinepos-cloud
+      systemctl reload caddy || systemctl restart caddy
+      echo "Hub address: https://$domain  (admin page: https://$domain/admin)"
+
+  # Downloads the latest hub from GitHub and restarts it.
+  - path: /usr/local/bin/dinepos-cloud-update
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      git -C /opt/dinepos fetch --depth 1 origin main
+      git -C /opt/dinepos reset --hard origin/main
+      bash /opt/dinepos/cloud/hub/deploy/portal.sh || echo "Portal not updated; the hub is."
+      systemctl restart dinepos-cloud
+      echo "Hub updated to $(git -C /opt/dinepos log -1 --format='%h %s')"
+
+  # Every hour: the cloud's database and each hosted outlet's newest backup, kept 14 days here, and copied to S3 when
+  # HUB_S3_BUCKET is set (deploy/backup.sh in the repository, so updates reach it).
+  - path: /etc/cron.hourly/dinepos-cloud-backup
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      exec /bin/bash /opt/dinepos/cloud/hub/deploy/backup.sh
+
+runcmd:
+  - snap install aws-cli --classic || true
+  # Node 24
+  - curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+  - apt-get install -y nodejs
+  # Caddy (HTTPS reverse proxy with automatic certificates)
+  - curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  - curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt -o /etc/apt/sources.list.d/caddy-stable.list
+  - apt-get update && apt-get install -y caddy
+  # The hub
+  - useradd --system --home /var/lib/dinepos-cloud --shell /usr/sbin/nologin dineposcloud
+  - install -d -o dineposcloud -g dineposcloud -m 0750 /var/lib/dinepos-cloud
+  - git clone --depth 1 https://github.com/souvik992/fine-dine.git /opt/dinepos
+  - bash /opt/dinepos/cloud/hub/deploy/portal.sh || true
+  - systemctl daemon-reload
+  - systemctl enable --now dinepos-cloud
+  - /usr/local/bin/dinepos-cloud-domain

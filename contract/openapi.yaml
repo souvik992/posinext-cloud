@@ -1,0 +1,260 @@
+openapi: 3.1.0
+info:
+  title: Tiffin POS online order hub
+  version: 1.0.0-draft
+  description: |
+    Contract v1 between the cloud order hub, each shop's POS, and the customer apps.
+    - Money is integer paise; quantities are integer thousandths (1000 = 1); times are ms since epoch, UTC.
+    - Every state-changing call carries an `Idempotency-Key` header. A repeat with the same key returns the first answer and does nothing new.
+    - The order life cycle (allowed states and who may change them) is `contract/src/order.ts`. The hub refuses anything else with 409 `BAD_TRANSITION`.
+    - Errors: `{ "error": { "code": "...", "message": "plain words", "details": {...} } }`.
+servers:
+  - url: https://hub.example.in/v1
+    description: placeholder until hosting is chosen
+tags:
+  - name: pos
+    description: Called by a shop's POS (device key). The shop never accepts incoming connections.
+  - name: customer
+    description: Called by the store's app or website.
+  - name: webhooks
+    description: Called by the payment gateway and, later, Swiggy / Zomato.
+
+paths:
+  /pos/pair:
+    post:
+      tags: [pos]
+      summary: Pair a POS with its store, using the one-time code shown in the hub admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code, deviceName], properties: { code: { type: string }, deviceName: { type: string, maxLength: 60 } } }
+      responses:
+        '200': { description: Paired, content: { application/json: { schema: { type: object, properties: { storeId: { type: string }, deviceKey: { type: string, description: 'Secret. Sent as Authorization Bearer; revocable in the hub.' } } } } } }
+        '400': { $ref: '#/components/responses/Error' }
+
+  /pos/menu:
+    put:
+      tags: [pos]
+      summary: Publish the menu, prices, availability, opening hours and online settings (whenever they change)
+      security: [{ device: [] }]
+      parameters: [{ $ref: '#/components/parameters/Idem' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, items, categories, settings, hours]
+              properties:
+                version: { type: integer, description: 'Increases with every publish. Orders carry the version they were placed from.' }
+                categories: { type: array, items: { type: object, properties: { id: { type: string }, name: { type: string }, sort: { type: integer } } } }
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      categoryId: { type: [string, 'null'] }
+                      name: { type: string }
+                      price: { type: integer, description: 'paise, GST included as on the POS' }
+                      isVeg: { type: [boolean, 'null'] }
+                      available: { type: boolean }
+                      imageUrl: { type: [string, 'null'] }
+                      modifierGroups: { type: array, items: { type: object } }
+                settings: { $ref: '#/components/schemas/StoreOnlineSettings' }
+                hours: { type: array, description: 'Per weekday open/close in IST, e.g. { day: 1, open: "10:00", close: "23:00" }', items: { type: object } }
+      responses:
+        '200': { description: Published, content: { application/json: { schema: { type: object, properties: { version: { type: integer } } } } } }
+
+  /pos/events:
+    get:
+      tags: [pos]
+      summary: 'Event stream (Server-Sent Events): new orders and changes, pushed the moment they happen'
+      description: |
+        One long-lived connection per POS. Each SSE message has `id: <seq>`, `event: <type>` and `data: <PosEvent JSON>`.
+        - Resume: send `Last-Event-ID: <last seq the POS stored>`; the hub replays everything after it.
+        - Heartbeat: an SSE comment (`: ping`) every 15 s. The POS reconnects if nothing arrives for 30 s.
+        - Store online status: the hub treats the store as online while this stream is connected (offline after 60 s without it).
+        - Delivery is at least once: the POS ignores a `seq` it already stored.
+      security: [{ device: [] }]
+      parameters:
+        - { name: Last-Event-ID, in: header, required: false, schema: { type: string } }
+      responses:
+        '200': { description: 'text/event-stream of PosEvent (contract/src/types.ts)', content: { text/event-stream: { schema: { type: string } } } }
+
+  /pos/orders/{orderId}/received:
+    post:
+      tags: [pos]
+      summary: The POS has stored the order (SENT_TO_STORE -> RECEIVED)
+      security: [{ device: [] }]
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/Idem' }]
+      responses: { '200': { $ref: '#/components/responses/OrderState' }, '409': { $ref: '#/components/responses/Error' } }
+
+  /pos/orders/{orderId}/accept:
+    post:
+      tags: [pos]
+      summary: Accept (manual, or automatic in auto-accept mode). The POS has already made the GST bill.
+      security: [{ device: [] }]
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/Idem' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [prepMinutes, posBillNo], properties: { prepMinutes: { type: integer, minimum: 1, maximum: 180 }, posBillNo: { type: string } } } } }
+      responses:
+        '200': { $ref: '#/components/responses/OrderState' }
+        '409': { description: 'BAD_TRANSITION, e.g. the customer cancelled first (F11): the POS cancels its bill', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /pos/orders/{orderId}/reject:
+    post:
+      tags: [pos]
+      summary: Reject with a reason (the hub refunds an online payment)
+      security: [{ device: [] }]
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/Idem' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { enum: [ITEM_UNAVAILABLE, TOO_BUSY, CLOSING, OUT_OF_DELIVERY_AREA, OTHER] }, reasonText: { type: [string, 'null'], maxLength: 200 } } } } }
+      responses: { '200': { $ref: '#/components/responses/OrderState' }, '409': { $ref: '#/components/responses/Error' } }
+
+  /pos/orders/{orderId}/state:
+    post:
+      tags: [pos]
+      summary: Move an accepted order on (PREPARING, READY, OUT_FOR_DELIVERY with rider, DELIVERED, PICKED_UP, CANCELLED)
+      security: [{ device: [] }]
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/Idem' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              properties:
+                to: { enum: [PREPARING, READY, OUT_FOR_DELIVERY, DELIVERED, PICKED_UP, CANCELLED] }
+                rider: { type: [object, 'null'], properties: { name: { type: string }, phone: { type: [string, 'null'] } } }
+                reasonText: { type: [string, 'null'], maxLength: 200 }
+      responses: { '200': { $ref: '#/components/responses/OrderState' }, '409': { $ref: '#/components/responses/Error' } }
+
+  /pos/sync/batches:
+    post:
+      tags: [pos]
+      summary: "DinePOS sales sync: the outlet's outbox (day.closed, bill.printed, bill.settled, bill.voided) in its own numbering"
+      description: |
+        Each outlet database is one stream (`streamId`); events carry its outbox `seq`, one after another from `fromSeq`
+        (at most 500). Safe to resend without an Idempotency-Key: an event already held under the same number with the
+        same content is skipped. The answer's `ackSeq` is the highest number the hub holds; the POS marks those sent.
+      security: [{ device: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [streamId, fromSeq, events]
+              properties:
+                streamId: { type: string, pattern: '^[0-9A-Za-z]{16,64}$' }
+                fromSeq: { type: integer, minimum: 1 }
+                events:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items: { type: object, required: [seq, kind, payload, createdAt], properties: { seq: { type: integer }, kind: { type: string }, payload: {}, createdAt: { type: string } } }
+      responses:
+        '200': { description: Stored, content: { application/json: { schema: { type: object, properties: { ackSeq: { type: integer }, stored: { type: integer } } } } } }
+        '409': { description: 'SYNC_GAP (details.ackSeq: send again from ackSeq + 1) or SYNC_CONFLICT (a different record under a number already held: start a new stream)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /pos/licence:
+    get:
+      tags: [pos]
+      summary: "DinePOS: the licence key the vendor put on the hub for this outlet (the POS verifies it before installing)"
+      security: [{ device: [] }]
+      responses:
+        '200': { description: The key, or null, content: { application/json: { schema: { type: object, properties: { key: { type: [string, 'null'] }, updatedAt: { type: [integer, 'null'] } } } } } }
+
+  /stores/{storeSlug}:
+    get:
+      tags: [customer]
+      summary: Store page - branding (`site` - the published website design from the website builder, hub/src/site.ts), open/closed, pickup/delivery and payment options, menu
+      parameters: [{ name: storeSlug, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: 'Store and its menu (version included)' }, '404': { $ref: '#/components/responses/Error' } }
+
+  /otp/send:
+    post:
+      tags: [customer]
+      summary: Send an OTP to a mobile (rate limited per number and per device)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [mobile], properties: { mobile: { type: string } } } } } }
+      responses: { '200': { description: Sent }, '429': { $ref: '#/components/responses/Error' } }
+
+  /otp/verify:
+    post:
+      tags: [customer]
+      summary: Verify the OTP; returns an otpToken (proof of the mobile) for placing COD orders and seeing past orders
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [mobile, otp], properties: { mobile: { type: string }, otp: { type: string, pattern: '^\d{4,6}$' } } } } } }
+      responses: { '200': { description: 'otpToken, valid 30 days on this device' }, '400': { $ref: '#/components/responses/Error' } }
+
+  /stores/{storeSlug}/orders:
+    post:
+      tags: [customer]
+      summary: Place an order (guest checkout = online payment; COD needs otpToken)
+      parameters: [{ name: storeSlug, in: path, required: true, schema: { type: string } }, { $ref: '#/components/parameters/Idem' }]
+      requestBody: { required: true, content: { application/json: { schema: { description: 'PlaceOrderRequest (contract/src/types.ts), checked by checkPlaceOrder (contract/src/validate.ts)' } } } }
+      responses:
+        '201': { description: 'Order (state PLACED). ONLINE: then call /orders/{id}/pay. COD: it is already on its way to the store.' }
+        '409': { description: 'STORE_OFFLINE, STORE_CLOSED, ITEM_UNAVAILABLE, or PRICE_CHANGED (with the new total: the app shows it and asks again)', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /orders/{orderId}:
+    get:
+      tags: [customer]
+      summary: Order and its current state (needs the order's access token from placing it)
+      parameters: [{ $ref: '#/components/parameters/OrderId' }]
+      responses: { '200': { description: Order } }
+
+  /orders/{orderId}/events:
+    get:
+      tags: [customer]
+      summary: 'Live status (Server-Sent Events of CustomerEvent); push notifications when the app is closed'
+      parameters: [{ $ref: '#/components/parameters/OrderId' }]
+      responses: { '200': { description: text/event-stream } }
+
+  /orders/{orderId}/pay:
+    post:
+      tags: [customer]
+      summary: Start (or retry) online payment; returns the gateway checkout details
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/Idem' }]
+      responses: { '200': { description: 'Gateway order id and key for the checkout screen' }, '409': { $ref: '#/components/responses/Error' } }
+
+  /orders/{orderId}/cancel:
+    post:
+      tags: [customer]
+      summary: Cancel before the store accepts (refund if paid)
+      parameters: [{ $ref: '#/components/parameters/OrderId' }, { $ref: '#/components/parameters/Idem' }]
+      responses: { '200': { $ref: '#/components/responses/OrderState' }, '409': { $ref: '#/components/responses/Error' } }
+
+  /webhooks/payments/{gateway}:
+    post:
+      tags: [webhooks]
+      summary: 'Payment gateway events (captured, failed, refunded). Signature checked; duplicates ignored by event id.'
+      parameters: [{ name: gateway, in: path, required: true, schema: { enum: [razorpay, cashfree] } }]
+      responses: { '200': { description: Stored }, '401': { description: Bad signature } }
+
+components:
+  securitySchemes:
+    device: { type: http, scheme: bearer, description: 'Device key from /pos/pair' }
+  parameters:
+    Idem: { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 100 } }
+    OrderId: { name: orderId, in: path, required: true, schema: { type: string } }
+  responses:
+    Error: { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    OrderState: { description: 'The order with its new state', content: { application/json: { schema: { type: object, properties: { orderId: { type: string }, state: { type: string } } } } } }
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: object, properties: { code: { type: string }, message: { type: string }, details: { type: object } } } }
+    StoreOnlineSettings:
+      type: object
+      description: contract/src/types.ts StoreOnlineSettings
+      properties:
+        acceptMode: { enum: [manual, auto] }
+        acceptTimeoutMin: { type: integer, minimum: 2, maximum: 15, default: 5 }
+        channels: { type: object, properties: { app: { type: boolean }, website: { type: boolean }, swiggy: { type: boolean }, zomato: { type: boolean } } }
+        fulfilment: { type: object, properties: { pickup: { type: boolean }, delivery: { type: boolean } } }
+        payments: { type: object, properties: { online: { type: boolean }, cod: { type: boolean } } }

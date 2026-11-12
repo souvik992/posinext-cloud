@@ -1,0 +1,17 @@
+{
+  "note": "Throwaway test keys. Made with the DinePOS app code (fine-dine apps/server/src/licence) and its keygen/cloud payload layouts.",
+  "masterPublicKey": "MCowBQYDK2VwAyEAq9BD/KjMKAL6ftJRhS5TrLD7XEclI/UDyz20iLcbhdU=",
+  "cloudPublicKey": "MCowBQYDK2VwAyEAE/tirSQpufISaaq41vLUJVzCK0CTxeOxZHmi01rhUQQ=",
+  "hardwareIdentifiers": [
+    "4c4c4544-0042-3510-8051-b4c04f565831",
+    "5A3C-91F2"
+  ],
+  "hardwareId": "20E5-D193-93D0-381F-44B3",
+  "hostedOutletId": "outlet-123",
+  "hostedIdentifiers": [
+    "machine-abc"
+  ],
+  "hostedHardwareId": "61B1-56E8-F279-5FE8-261F",
+  "legacyKey": "eyJ2IjoxLCJsaWNlbnNlZSI6IlNwaWNlIFJvdXRlLCBLb2xrYXRhIiwiaGFyZHdhcmVJZCI6IjIwRTUtRDE5My05M0QwLTM4MUYtNDRCMyIsImlzc3VlZEF0IjoiMjAyNi0wMS0wMVQwMDowMDowMC4wMDBaIiwiZXhwaXJlc0F0IjoiMjAyNy0wMS0wMVQxODoyOTo1OS4wMDBaIiwic2VhdHMiOnsidGVybWluYWxzIjoyLCJjYXB0YWlucyI6Miwia2RzIjoxfSwiZmVhdHVyZXMiOltdfQ.PIB35m5_wvo_d6ffL100g-IHEOJKv643llP8-mnycDFnrfOJQQ1n7j9ZWvhtxylxr-HzNM-RpgHQkmh-xy_kBA",
+  "cloudKey": "eyJ2IjoxLCJraWQiOiJjbG91ZCIsImxpY2Vuc2VlIjoiU3BpY2UgUm91dGUiLCJoYXJkd2FyZUlkIjoiMjBFNS1EMTkzLTkzRDAtMzgxRi00NEIzIiwiaXNzdWVkQXQiOiIyMDI2LTExLTAxVDAwOjAwOjAwLjAwMFoiLCJleHBpcmVzQXQiOiIyMDI2LTExLTE1VDAwOjAwOjAwLjAwMFoiLCJzZWF0cyI6eyJ0ZXJtaW5hbHMiOjEsImNhcHRhaW5zIjoxLCJrZHMiOjF9LCJmZWF0dXJlcyI6WyJ0cmlhbCJdLCJvdXRsZXRJZCI6InN0b3JlLTEifQ.2D3QKuKPJivQx3EW7Hf28L-8Fldaqq8O7j02NdtXzpqESHBR9b_hi_RGr4HPRDRJsMe8zYHZfrek0r6lWOcnDg"
+}

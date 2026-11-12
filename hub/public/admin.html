@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>DinePOS Cloud admin</title>
+<style>
+  :root { --bg: #f6f2ec; --card: #fff; --text: #3a2a1f; --muted: #8a7b6e; --primary: #ea580c; --line: #eadfd3; --ok: #16a34a; --bad: #b91c1c; --warn: #b45309; --soft: #fffaf5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  header .in { max-width: 1040px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 19px; flex: 1; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  nav a { text-decoration: none; color: var(--text); border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; font-size: 14px; }
+  nav a.on { background: var(--primary); color: #fff; border-color: var(--primary); }
+  main { max-width: 1040px; margin: 0 auto; padding: 8px 16px 60px; }
+  h2 { font-size: 17px; margin: 18px 0 8px; } h3 { margin: 0 0 6px; font-size: 15px; }
+  a { color: var(--primary); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .banner { margin: 12px 0; padding: 10px 12px; border-radius: 10px; background: #fee2e2; color: #7f1d1d; }
+  .banner.info { background: #fef3c7; color: #78350f; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 10px 0; }
+  button { font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; background: #fff; color: var(--text); cursor: pointer; }
+  button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+  button.danger { color: var(--bad); border-color: #f3c4c4; }
+  button.link { border: 0; background: none; color: var(--primary); padding: 0; }
+  button:disabled { opacity: .5; cursor: default; }
+  label { display: block; font-size: 13px; margin: 10px 0 3px; font-weight: 600; }
+  input, select, textarea { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--text); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .err { color: var(--bad); font-size: 13px; margin-top: 4px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .between { justify-content: space-between; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0 16px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 12px; }
+  .chip { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid; white-space: nowrap; }
+  .chip.ok { color: var(--ok); border-color: #bbe5c8; background: #f0fdf4; }
+  .chip.bad { color: var(--bad); border-color: #f3c4c4; background: #fef2f2; }
+  .chip.warn { color: var(--warn); border-color: #f5d9a8; background: #fffbeb; }
+  .chip.plain { color: var(--muted); border-color: var(--line); background: #fff; }
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; margin: 10px 0; font-size: 13px; color: var(--muted); }
+  .stats b { display: block; font-size: 18px; color: var(--text); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .box { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--soft); }
+  .linkbox { display: flex; gap: 8px; margin-top: 6px; } .linkbox input { font: 14px ui-monospace, Consolas, monospace; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; }
+  .scroll { overflow-x: auto; }
+  tr.order { cursor: pointer; } tr.order:hover td { background: var(--soft); }
+  tr.detail td { background: var(--soft); white-space: normal; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .kv:last-child { border-bottom: 0; } .kv > span:last-child { text-align: right; }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; } .filters > div { min-width: 180px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; } .seg button.on { background: var(--primary); color: #fff; }
+  .storecard { cursor: pointer; } .storecard:hover { border-color: #dcc5ad; }
+  .ch { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .ch svg { width: 13px; height: 13px; }
+  .ch.swiggy { background: #FC8019; color: #fff; font-weight: 800; letter-spacing: -.2px; }
+  .ch.zomato { background: #E23744; color: #fff; font-weight: 800; font-style: italic; letter-spacing: -.2px; }
+  .ch.website, .ch.app { background: #ffedd5; color: var(--primary); }
+  .chip.st-placed { color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; }
+  .chip.st-accepted, .chip.st-preparing { color: var(--ok); border-color: #bbe5c8; background: #f0fdf4; }
+  .chip.st-in_transit { color: #7c3aed; border-color: #ddd6fe; background: #f5f3ff; }
+  .chip.st-delivered { color: #166534; border-color: #86efac; background: #dcfce7; font-weight: 600; }
+  .chip.st-cancelled_store, .chip.st-cancelled_customer { color: var(--bad); border-color: #f3c4c4; background: #fef2f2; }
+  .chip.st-failed { color: #fff; border-color: #991b1b; background: #b91c1c; }
+  td .sub { color: var(--muted); font-size: 12px; margin-top: 2px; white-space: normal; max-width: 280px; }
+  .hidden { display: none !important; }
+  .stack { display: grid; gap: 8px; }
+  .sub { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>DinePOS Cloud admin</h1>
+  <nav id="nav" class="hidden">
+    <a href="#orders" data-tab="orders">Orders</a>
+    <a href="#stores" data-tab="stores">Stores</a>
+    <a href="#brands" data-tab="brands">Brands</a>
+    <a href="#accounts" data-tab="accounts">Accounts</a>
+    <a href="#support" data-tab="support">Support</a>
+    <a href="#settings" data-tab="settings">Hub settings</a>
+    <a href="#" id="signout">Sign out</a>
+  </nav>
+</div></header>
+<main>
+  <div id="insecure" class="banner hidden">This page is open over plain http. The admin key can be read on the network: use the hub's https:// address.</div>
+
+  <section id="login" class="card hidden" style="max-width:420px;margin:40px auto">
+    <h3>Sign in</h3>
+    <p class="muted">Enter the hub's admin key (HUB_ADMIN_KEY). It is kept only in this browser tab.</p>
+    <form id="loginForm">
+      <label for="key">Admin key</label>
+      <input id="key" type="password" autocomplete="current-password" required>
+      <div id="loginErr" class="err"></div>
+      <div class="actions"><button class="primary" type="submit">Sign in</button></div>
+    </form>
+  </section>
+
+  <div id="hubWarn"></div>
+
+  <!-- ===================================================== orders -->
+  <section id="orders" class="hidden">
+    <div class="row between"><h2>Online orders</h2><span class="muted" data-updated></span></div>
+    <div class="card filters">
+      <div><label for="orderStore">Store</label><select id="orderStore"></select></div>
+      <div><label>Show</label><div class="seg" id="orderStatus"><button data-v="open">Open</button><button data-v="delivered">Delivered</button><button data-v="cancelled">Cancelled</button><button data-v="failed">Failed</button><button data-v="all">All</button></div></div>
+    </div>
+    <div class="card scroll" id="orderList"></div>
+    <p class="muted">The latest 100. Click an order for its items, customer and address. Mobile numbers are partly hidden. "Failed" includes orders that could not be placed at all (store offline, price changed, technical errors); those are kept 30 days. Times are India time.</p>
+  </section>
+
+  <!-- ===================================================== stores -->
+  <section id="stores" class="hidden">
+    <div class="row between"><h2>Stores</h2><span class="muted" data-updated></span></div>
+    <div id="storeList"></div>
+    <div class="card">
+      <h3>Add a store</h3>
+      <p class="muted" style="margin:0">You get a connection link. The shop pastes it into its POS (Settings &gt; Online orders &gt; Order hub) and is connected.</p>
+      <form id="addForm" class="grid">
+        <div><label for="newName">Store name</label><input id="newName" maxlength="80" required placeholder="Spice Garden Indiranagar"></div>
+        <div><label for="newSlug">Store address</label><input id="newSlug" maxlength="41" required placeholder="kalyan-nagar" pattern="[a-z0-9][a-z0-9\-]{2,40}">
+          <div class="hint">Lowercase letters, digits and dashes. Used in the ordering link; cannot be changed later.</div></div>
+      </form>
+      <div id="addErr" class="err"></div>
+      <div class="actions"><button class="primary" type="submit" form="addForm">Add store</button></div>
+      <div id="addResult"></div>
+    </div>
+  </section>
+
+  <section id="store" class="hidden"></section>
+
+  <!-- ===================================================== brands (P6-05) -->
+  <section id="brands" class="hidden">
+    <div class="row between"><h2>Brands</h2><span class="muted" data-updated></span></div>
+    <p class="muted">A brand is one ordering website for several outlets (<code>/order/&lt;brand&gt;</code>). The customer gives their location first; a delivery goes to the nearest outlet that is open and delivers there, a pickup to the nearest open outlet. The customer then orders from that outlet's own menu and prices. The website design is the main outlet's (made in its website builder).</p>
+    <div id="brandList"></div>
+    <div class="card">
+      <h3>Add a brand</h3>
+      <form id="brandForm" class="grid">
+        <div><label for="brandName">Brand name</label><input id="brandName" maxlength="80" required placeholder="Spice Garden"></div>
+        <div><label for="brandSlug">Brand address</label><input id="brandSlug" maxlength="41" required placeholder="spice-garden" pattern="[a-z0-9][a-z0-9\-]{2,40}">
+          <div class="hint">Lowercase letters, digits and dashes; not the same as any store's address. Cannot be changed later.</div></div>
+      </form>
+      <div id="brandErr" class="err"></div>
+      <div class="actions"><button class="primary" type="submit" form="brandForm">Add brand</button></div>
+    </div>
+  </section>
+
+  <!-- ===================================================== customer accounts (P7-01) -->
+  <section id="accounts" class="hidden">
+    <div class="row between"><h2>Customer accounts</h2><span class="muted" data-updated></span></div>
+    <p class="muted">Businesses that signed up on the portal (<a href="/signup" target="_blank" rel="noopener">/signup</a>). The newest 500.</p>
+    <div id="accountWarn"></div>
+    <div class="card scroll" id="accountList"></div>
+    <h3>Reset a free trial</h3>
+    <p class="muted">Lets the 30-day trial be started again: the trial keys are revoked (the app finds no key and offers the trial) and the "already had a trial" records for the email, mobile and PCs are removed. Paid keys are not touched. Give the account email, a PC's hardware id (Settings &rsaquo; Licence in the app), or both.</p>
+    <div class="card">
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        <input id="trialEmail" type="email" placeholder="Account email" aria-label="Account email" style="min-width:220px">
+        <input id="trialHw" placeholder="PC hardware id (optional)" aria-label="PC hardware id" style="min-width:200px">
+        <select id="trialProduct" aria-label="Product"><option value="">Both products</option><option value="tiffin_qsr">QSR (Tiffin POS)</option><option value="fine_dine">Fine Dine (DinePOS)</option></select>
+        <button class="danger" id="trialReset">Reset trial</button>
+      </div>
+      <div id="trialMsg" class="muted" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- ===================================================== support (P8-08): tickets, announcements, knowledge base -->
+  <section id="support" class="hidden">
+    <div class="row between"><h2>Support</h2><span class="muted" data-updated></span></div>
+    <p class="muted">Tickets from the customer portal (waiting for an answer first), news for the portal's Announcements, and Knowledge base articles. Your answer is emailed to the customer.</p>
+    <div class="err" id="supportErr"></div>
+    <div class="card" id="ticketView"></div>
+    <div class="card scroll" id="ticketList"></div>
+    <h3>Announcements</h3>
+    <div class="card" id="announceBox"></div>
+    <h3>Knowledge base</h3>
+    <div class="card" id="kbBox"></div>
+  </section>
+
+  <!-- ===================================================== settings -->
+  <section id="settings" class="hidden">
+    <h2>Hub settings</h2>
+    <div class="card">
+      <form id="settingsForm">
+        <label for="routingUrl">Road-routing server</label>
+        <input id="routingUrl" placeholder="https://osrm.example.com">
+        <div class="hint">An OSRM-compatible server for real road distances. Empty: straight line × each store's road factor.</div>
+        <div class="err" data-err="routingUrl"></div>
+        <div class="grid">
+          <div><label for="offlineAfterSec">Store offline after (seconds)</label><input id="offlineAfterSec" type="number" min="15" max="3600" required>
+            <div class="hint">How long after its POS loses connection a store stops taking orders.</div><div class="err" data-err="offlineAfterSec"></div></div>
+          <div><label for="pairingCodeMinutes">Connection links valid for (minutes)</label><input id="pairingCodeMinutes" type="number" min="5" max="1440" required>
+            <div class="hint">Applies to new links.</div><div class="err" data-err="pairingCodeMinutes"></div></div>
+        </div>
+        <h3 style="margin-top:18px">Request limits</h3>
+        <div class="hint">Per minute, per customer internet address. Protects against abuse; too low blocks real customers.</div>
+        <div class="grid">
+          <div><label for="otpPerMinute">OTP requests</label><input id="otpPerMinute" type="number" min="1" max="100" required><div class="err" data-err="otpPerMinute"></div></div>
+          <div><label for="ordersPerMinute">Orders placed</label><input id="ordersPerMinute" type="number" min="1" max="1000" required><div class="err" data-err="ordersPerMinute"></div></div>
+          <div><label for="pairPerMinute">POS connection attempts</label><input id="pairPerMinute" type="number" min="1" max="100" required><div class="err" data-err="pairPerMinute"></div></div>
+        </div>
+        <div id="settingsErr" class="err"></div>
+        <div class="actions"><button class="primary" type="submit">Save settings</button><span id="settingsSaved" class="muted"></span></div>
+      </form>
+    </div>
+    <h2>Swiggy & Zomato (UrbanPiper account)</h2>
+    <div id="upAccount"></div>
+    <h2>Set when the hub starts</h2>
+    <div class="card" id="fixed"></div>
+    <p class="muted">These change only by restarting the hub with different environment variables (see hub/README.md), so the admin key alone can never switch them on.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const keyStore = { get: () => { try { return sessionStorage.getItem('hubAdminKey') || ''; } catch { return ''; } },
+    set: (v) => { try { v ? sessionStorage.setItem('hubAdminKey', v) : sessionStorage.removeItem('hubAdminKey'); } catch { /* private window */ } } };
+  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false;
+  let health = null; // GET /health/deep: hosted outlets down, backups failing
+  const ui = { orderStore: '', orderStatus: 'open', expanded: new Set(), links: new Map(), pausing: false, up: new Map(), licence: new Map(), sitePasswords: new Map() };
+
+  if (location.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(location.hostname)) $('insecure').classList.remove('hidden');
+
+  /** DOM helper: text only, never HTML (store, item and customer names come from shops and customers). */
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === undefined || v === null || v === false) continue;
+      if (k.startsWith('on')) el.addEventListener(k.slice(2), v); else if (k === 'class') el.className = v; else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const k of kids.flat(3)) if (k !== null && k !== undefined && k !== false) el.append(k instanceof Node ? k : document.createTextNode(String(k)));
+    return el;
+  }
+  const when = (t) => t ? new Date(t).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+  const ago = (t) => { if (!t) return 'never'; const s = Math.round((Date.now() - t) / 1000); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : when(t); };
+  const rupees = (paise) => '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const qty = (milli) => String(milli / 1000);
+  const chip = (cls, text) => h('span', { class: `chip ${cls}` }, text);
+  const yesNo = (on, yes = 'On', no = 'Off') => chip(on ? 'ok' : 'plain', on ? yes : no);
+  const kv = (k, v) => h('div', { class: 'kv' }, h('span', {}, k), h('span', {}, v));
+  const IST = { timeZone: 'Asia/Kolkata' };
+  const day = (t) => new Date(t).toLocaleDateString('en-IN', { ...IST, day: '2-digit', month: 'short', year: 'numeric' });
+  const clock = (t) => new Date(t).toLocaleTimeString('en-IN', { ...IST, hour: '2-digit', minute: '2-digit' });
+  const STATUS = { placed: 'Placed', accepted: 'Accepted', preparing: 'Preparing', in_transit: 'In transit', delivered: 'Delivered', cancelled_store: 'Cancelled by store', cancelled_customer: 'Cancelled by customer', failed: 'Failed' };
+  const statusChip = (o) => chip(`st-${o.status}`, STATUS[o.status] || o.status);
+  const payMode = (o) => !o.payment ? '-' : o.payment === 'COD' ? (o.fulfilment === 'PICKUP' ? 'Cash at pickup' : 'Cash on delivery') : `Online${o.kind === 'order' ? (o.paid ? ' (paid)' : ' (not paid)') : ''}`;
+  function svg(paths) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    el.setAttribute('viewBox', '0 0 24 24'); el.setAttribute('fill', 'none'); el.setAttribute('stroke', 'currentColor'); el.setAttribute('stroke-width', '2'); el.setAttribute('stroke-linecap', 'round');
+    for (const d of paths) { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); el.append(p); }
+    return el;
+  }
+  /** Sales channel badge in the channel's own colours (as on the POS ODS): Swiggy, Zomato, the store's website or app. */
+  function channelBadge(c) {
+    if (c === 'swiggy') return h('span', { class: 'ch swiggy', title: 'Swiggy' }, 'Swiggy');
+    if (c === 'zomato') return h('span', { class: 'ch zomato', title: 'Zomato' }, 'zomato');
+    if (c === 'app') return h('span', { class: 'ch app', title: "The store's app" }, svg(['M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z', 'M12 18h.01']), 'App');
+    if (c === 'website') return h('span', { class: 'ch website', title: "The store's website" }, svg(['M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20z', 'M2 12h20', 'M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20z']), 'Website');
+    return h('span', { class: 'chip plain' }, c || '-');
+  }
+  const REJECT = { ITEM_UNAVAILABLE: 'Item not available', TOO_BUSY: 'Too busy', CLOSING: 'Closing', OUT_OF_DELIVERY_AREA: 'Outside delivery area', OTHER: 'Other' };
+
+  async function api(method, path, body) {
+    const r = await fetch(path, { method, headers: { 'X-Admin-Key': key, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const j = await r.json().catch(() => null);
+    if (r.status === 403) { signOut('The admin key is wrong.'); throw new Error('The admin key is wrong.'); }
+    if (!r.ok) { const e = new Error(j?.error?.message || `Request failed (${r.status}).`); e.fields = j?.error?.details?.fields; throw e; }
+    return j;
+  }
+
+  // ------------------------------------------------------------ routing (#orders, #stores, #stores/<slug>, #settings)
+  function route() {
+    const [tab, slug] = location.hash.replace(/^#/, '').split('/');
+    return { tab: ['orders', 'stores', 'brands', 'accounts', 'support', 'settings'].includes(tab) ? tab : 'orders', slug: tab === 'stores' && slug ? decodeURIComponent(slug) : null };
+  }
+  function show() {
+    const signedIn = Boolean(key), r = route();
+    $('login').classList.toggle('hidden', signedIn);
+    $('nav').classList.toggle('hidden', !signedIn);
+    $('hubWarn').classList.toggle('hidden', !signedIn);
+    $('orders').classList.toggle('hidden', !signedIn || r.tab !== 'orders');
+    $('stores').classList.toggle('hidden', !signedIn || r.tab !== 'stores' || Boolean(r.slug));
+    $('store').classList.toggle('hidden', !signedIn || !r.slug);
+    $('settings').classList.toggle('hidden', !signedIn || r.tab !== 'settings');
+    $('brands').classList.toggle('hidden', !signedIn || r.tab !== 'brands');
+    $('accounts').classList.toggle('hidden', !signedIn || r.tab !== 'accounts');
+    $('support').classList.toggle('hidden', !signedIn || r.tab !== 'support');
+    for (const a of document.querySelectorAll('nav [data-tab]')) a.classList.toggle('on', a.dataset.tab === r.tab);
+  }
+  window.addEventListener('hashchange', () => { ui.pausing = false; show(); refresh(); });
+
+  function signOut(msg) { key = ''; keyStore.set(''); overview = null; clearInterval(timer); timer = null; $('loginErr').textContent = msg || ''; show(); }
+  const typing = () => document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) && document.activeElement.closest('#store, #storeList');
+
+  async function refresh() {
+    if (!key) return;
+    try {
+      overview = await api('GET', '/v1/admin/overview');
+      health = await fetch('/health/deep').then((r) => r.json()).catch(() => null);
+      renderWarnings(); fillStoreFilter();
+      const r = route();
+      if (r.tab === 'orders') await renderOrders();
+      else if (r.slug) { if (!typing()) await renderStore(r.slug); }
+      else if (r.tab === 'stores') renderStores();
+      else if (r.tab === 'accounts') await renderAccounts();
+      else if (r.tab === 'support' && !(document.activeElement && document.activeElement.closest('#support'))) await renderSupport();
+      else if (r.tab === 'brands' && !(document.activeElement && document.activeElement.closest('#brands'))) await renderBrands();
+      if (!settingsDirty) fillSettings();
+      if (r.tab === 'settings' && !(document.activeElement && document.activeElement.closest('#upAccount'))) await renderAccount();
+      for (const el of document.querySelectorAll('[data-updated]')) el.textContent = `Updated ${new Date().toLocaleTimeString('en-IN')}`;
+    } catch (e) { for (const el of document.querySelectorAll('[data-updated]')) el.textContent = e.message; }
+  }
+
+  function renderWarnings() {
+    const hub = overview.hub;
+    $('hubWarn').replaceChildren(...(hub.devOtp ? [h('div', { class: 'banner' }, 'OTP codes are shown to customers (HUB_DEV_OTP=1). Use this only for development and testing.')] : []),
+      ...(!hub.smsProvider ? [h('div', { class: 'banner info' }, 'No SMS provider is set up yet: customers cannot receive OTP codes by SMS.')] : []),
+      ...(health && !health.ok ? health.problems.map((p) => h('div', { class: 'banner' }, p)) : []),
+      ...(health && health.backup && health.backup.ok && !health.backup.offsite ? [h('div', { class: 'banner info' }, 'Backups stay on this server only. Set HUB_S3_BUCKET in /etc/dinepos-cloud.env (and give the server an S3 role) to copy them off it every hour.')] : []));
+  }
+
+  // ------------------------------------------------------------ orders
+  function fillStoreFilter() {
+    const sel = $('orderStore');
+    const want = [['', 'All stores'], ...overview.stores.map((s) => [s.slug, s.name])];
+    if (sel.options.length !== want.length || [...sel.options].some((o, i) => o.value !== want[i][0])) sel.replaceChildren(...want.map(([v, t]) => h('option', { value: v }, t)));
+    sel.value = ui.orderStore;
+    for (const b of $('orderStatus').children) b.classList.toggle('on', b.dataset.v === ui.orderStatus);
+  }
+  $('orderStore').addEventListener('change', (e) => { ui.orderStore = e.target.value; renderOrders(); });
+  for (const b of $('orderStatus').children) b.addEventListener('click', () => { ui.orderStatus = b.dataset.v; fillStoreFilter(); renderOrders(); });
+
+  async function renderOrders() {
+    const q = new URLSearchParams({ status: ui.orderStatus, limit: '100', ...(ui.orderStore ? { store: ui.orderStore } : {}) });
+    const list = $('orderList');
+    try {
+      const { orders } = await api('GET', `/v1/admin/orders?${q}`);
+      const EMPTY = { open: 'No open orders right now.', delivered: 'No delivered orders yet.', cancelled: 'No cancelled orders.', failed: 'No failed orders.', all: 'No orders yet.' };
+      if (!orders.length) { list.replaceChildren(h('p', { class: 'muted', style: 'margin:0' }, EMPTY[ui.orderStatus])); return; }
+      const showStore = !ui.orderStore;
+      const cols = 8 + (showStore ? 1 : 0);
+      list.replaceChildren(h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Order'), h('th', {}, 'Channel'), showStore ? h('th', {}, 'Store') : null, h('th', {}, 'Date'), h('th', {}, 'Time'), h('th', {}, 'Status'), h('th', {}, 'Type'), h('th', {}, 'Payment mode'), h('th', { class: 'num' }, 'Total'))),
+        h('tbody', {}, orders.map((o) => [
+          h('tr', { class: 'order', onclick: () => { ui.expanded.has(o.id) ? ui.expanded.delete(o.id) : ui.expanded.add(o.id); renderOrders(); } },
+            h('td', {}, o.number ? h('b', {}, o.number) : h('span', { class: 'muted' }, 'Not placed')), h('td', {}, channelBadge(o.channel)), showStore ? h('td', {}, o.store.name) : null,
+            h('td', {}, day(o.placedAt)), h('td', {}, clock(o.placedAt)),
+            h('td', {}, statusChip(o), o.statusDetail ? h('div', { class: 'sub' }, o.statusDetail) : null),
+            h('td', {}, o.fulfilment === 'DELIVERY' ? 'Delivery' : o.fulfilment === 'PICKUP' ? 'Pickup' : '-'),
+            h('td', {}, payMode(o)), h('td', { class: 'num' }, o.total == null ? '-' : rupees(o.total))),
+          ui.expanded.has(o.id) ? h('tr', { class: 'detail' }, h('td', { colspan: String(cols) }, orderDetail(o))) : null,
+        ]))));
+    } catch (e) { list.replaceChildren(h('span', { class: 'err' }, e.message)); }
+  }
+
+  function orderDetail(o) {
+    if (o.kind === 'attempt') return h('div', { class: 'cols' },
+      h('div', {}, h('h3', {}, 'Why it failed'), h('p', { style: 'margin:0' }, o.statusDetail), h('p', { class: 'muted' }, `Error code: ${o.errorCode}. The order was not placed and nothing reached the store; the customer was shown this message.`)),
+      h('div', {}, h('h3', {}, 'Customer'), kv('Name', o.customerName || '-'), kv('Mobile', o.mobile || '-'), kv('Store', o.store.name), kv('Attempted at', `${day(o.placedAt)}, ${clock(o.placedAt)}`)));
+    const addr = o.address ? [o.address.line1, o.address.line2, o.address.landmark, `${o.address.city} ${o.address.pincode}`].filter(Boolean).join(', ') : null;
+    return h('div', { class: 'cols' },
+      h('div', {}, h('h3', {}, 'Items'),
+        h('table', {}, h('tbody', {}, o.lines.map((l) => h('tr', {}, h('td', {}, `${qty(l.qtyMilli)} ×`), h('td', { style: 'white-space:normal' }, l.name, l.modifiers.length ? h('div', { class: 'muted' }, l.modifiers.join(', ')) : null, l.note ? h('div', { class: 'muted' }, `Note: ${l.note}`) : null), h('td', { class: 'num' }, rupees(l.lineTotal)))),
+          h('tr', {}, h('td', {}), h('td', {}, 'Items'), h('td', { class: 'num' }, rupees(o.itemsTotal))),
+          o.deliveryFee ? h('tr', {}, h('td', {}), h('td', {}, 'Delivery fee'), h('td', { class: 'num' }, rupees(o.deliveryFee))) : null,
+          o.packagingFee ? h('tr', {}, h('td', {}), h('td', {}, 'Packaging'), h('td', { class: 'num' }, rupees(o.packagingFee))) : null,
+          h('tr', {}, h('td', {}), h('td', {}, h('b', {}, 'Total')), h('td', { class: 'num' }, h('b', {}, rupees(o.total)))))),
+        o.note ? h('p', { class: 'muted' }, `Order note: ${o.note}`) : null),
+      h('div', {}, h('h3', {}, 'Customer'),
+        kv('Name', o.customerName || '-'), kv('Mobile', [o.mobile, ' ', o.verified ? chip('ok', 'OTP verified') : chip('plain', 'Not verified')]),
+        addr ? kv('Address', addr) : null, o.distanceKm != null ? kv('Distance', `${o.distanceKm} km`) : null,
+        h('h3', { style: 'margin-top:12px' }, 'Store'),
+        kv('Store', o.store.name), kv('Status', [statusChip(o), o.statusDetail ? ` ${o.statusDetail}` : '']), kv('Order step', o.label), kv('Payment mode', payMode(o)), kv('POS bill', o.posBillNo || '-'), o.prepMinutes ? kv('Preparation time', `${o.prepMinutes} min`) : null,
+        o.rider ? kv('Rider', `${o.rider.name}${o.rider.phone ? ` (${o.rider.phone})` : ''}`) : null,
+        o.rejectReason ? kv('Reject reason', REJECT[o.rejectReason] || o.rejectReason) : null, o.reasonText ? kv('Reason', o.reasonText) : null,
+        kv('Last change', when(o.updatedAt))));
+  }
+
+  // ------------------------------------------------------------ stores list
+  function statusChips(s) {
+    return [s.connected ? chip('ok', 'POS online') : chip('bad', 'POS offline'), s.pausedReason ? chip('bad', 'Paused by hub') : null,
+      s.accepting ? chip('ok', 'Shift open') : chip('warn', 'Not accepting'), s.open.open ? chip('ok', 'Customers can order') : null];
+  }
+  function renderStores() {
+    const list = $('storeList');
+    if (!overview.stores.length) { list.replaceChildren(h('div', { class: 'card muted' }, 'No stores yet. Add the first one below.')); return; }
+    list.replaceChildren(...overview.stores.map((s) => h('div', { class: 'card storecard', onclick: () => { location.hash = `#stores/${encodeURIComponent(s.slug)}`; } },
+      h('div', { class: 'row between' }, h('div', {}, h('h3', { style: 'margin:0' }, s.name), h('div', { class: 'muted' }, `/order/${s.slug}`)), h('div', { class: 'row' }, statusChips(s))),
+      h('div', { class: 'stats' }, h('div', {}, h('b', {}, s.openOrders), 'open orders'), h('div', {}, h('b', {}, s.ordersLastDay), 'orders in 24 h'),
+        h('div', {}, h('b', {}, s.menuVersion ? `v${s.menuVersion}` : '-'), `menu, ${s.menuItems} items`), h('div', {}, h('b', {}, s.devices.filter((d) => !d.revokedAt).length), 'POS connected'),
+        h('div', {}, h('b', {}, ago(s.lastSeenAt)), 'POS last seen')))));
+  }
+
+  function linkBox(l, title) {
+    const input = h('input', { readonly: true, value: l.connectUrl, 'aria-label': 'Connection link', onfocus: (e) => e.target.select() });
+    const btn = h('button', { class: 'primary', onclick: async () => {
+      try { await navigator.clipboard.writeText(l.connectUrl); } catch { input.focus(); input.select(); document.execCommand && document.execCommand('copy'); }
+      btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    } }, 'Copy');
+    return h('div', { class: 'box' }, h('div', {}, title), h('div', { class: 'linkbox' }, input, btn),
+      h('div', { class: 'hint' }, `Paste it in the POS: Settings > Online orders > Order hub > Connect. Works once, until ${when(l.expiresAt)}.`));
+  }
+
+  $('addForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    $('addErr').textContent = '';
+    try {
+      const s = await api('POST', '/v1/admin/stores', { slug: $('newSlug').value.trim(), name: $('newName').value.trim() });
+      $('addForm').reset();
+      ui.links.set(s.slug, s);
+      $('addResult').replaceChildren(linkBox(s, `Store "${s.name}" added. Send this connection link to the shop:`));
+      await refresh();
+    } catch (e) { $('addErr').textContent = e.message; }
+  });
+
+  // ------------------------------------------------------------ customer accounts (P7-01)
+  const ACCOUNT_STATUS = { new: 'New', trial: 'Trial', active: 'Active', past_due: 'Payment due', suspended: 'Suspended', closed: 'Closed' };
+  async function renderAccounts() {
+    const { accounts, signupOpen } = await api('GET', '/v1/admin/accounts');
+    $('accountWarn').replaceChildren(...(signupOpen ? [] : [h('div', { class: 'banner info' }, 'Sign-up is closed: no email provider is set up. Set HUB_BREVO_API_KEY and HUB_MAIL_FROM in /etc/dinepos-cloud.env.')]));
+    if (!accounts.length) { $('accountList').replaceChildren(h('div', { class: 'muted' }, 'No accounts yet.')); return; }
+    $('accountList').replaceChildren(h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, 'Business'), h('th', {}, 'Owner'), h('th', {}, 'Mobile'), h('th', {}, 'Status'), h('th', { class: 'num' }, 'People'), h('th', { class: 'num' }, 'Outlets'), h('th', {}, 'Signed up'), h('th', {}, ''))),
+      h('tbody', {}, accounts.map((a) => h('tr', {},
+        h('td', {}, a.name),
+        h('td', {}, a.owner ? [a.owner.name, h('div', { class: 'sub' }, a.owner.email, ' ', a.owner.verified ? chip('ok', 'verified') : chip('warn', 'not verified'))] : '-'),
+        h('td', {}, a.phone),
+        h('td', {}, chip('plain', ACCOUNT_STATUS[a.status] || a.status)),
+        h('td', { class: 'num' }, String(a.users)),
+        h('td', { class: 'num' }, String(a.stores)),
+        h('td', {}, when(a.createdAt)),
+        h('td', {}, a.owner ? h('button', { onclick: () => resetTrial(a.owner.email, '', '') }, 'Reset trial') : ''))))));
+  }
+  async function resetTrial(email, hardwareId, product) {
+    const who = [email, hardwareId].filter(Boolean).join(' / ');
+    if (!who) { $('trialMsg').textContent = 'Give an email or a hardware id.'; return; }
+    if (!confirm(`Reset the free trial for ${who}${product ? '' : ' (both products)'}? Its trial keys stop working, and the next "Start 30-day free trial" in the app makes a new 30-day trial.`)) return;
+    try {
+      const r = await api('POST', '/v1/admin/trials/reset', { email: email || undefined, hardwareId: hardwareId || undefined, product: product || undefined });
+      $('trialMsg').textContent = `Done for ${who}: ${r.revokedKeys} trial key${r.revokedKeys === 1 ? '' : 's'} revoked, ${r.clearedClaims} trial record${r.clearedClaims === 1 ? '' : 's'} removed.`;
+    } catch (e) { $('trialMsg').textContent = e.message; }
+  }
+  $('trialReset').addEventListener('click', () => resetTrial($('trialEmail').value.trim(), $('trialHw').value.trim(), $('trialProduct').value));
+
+  // ------------------------------------------------------------ support (P8-08)
+  const TICKET_STATUS = { open: ['warn', 'Waiting for us'], answered: ['ok', 'Answered'], closed: ['plain', 'Closed'] };
+  const PRODUCT_NAME = { fine_dine: 'Fine Dine (DinePOS)', tiffin_qsr: 'QSR (Tiffin POS)' };
+  const productSelect = (label) => h('select', { 'aria-label': label }, h('option', { value: '' }, 'Both products'), h('option', { value: 'tiffin_qsr' }, PRODUCT_NAME.tiffin_qsr), h('option', { value: 'fine_dine' }, PRODUCT_NAME.fine_dine));
+  let openTicket = null;
+  async function supportRun(fn) {
+    $('supportErr').textContent = '';
+    try { await fn(); await renderSupport(); } catch (e) { $('supportErr').textContent = e.message; }
+  }
+  async function renderSupport() {
+    const [{ tickets }, { announcements }, { articles }] = await Promise.all([api('GET', '/v1/admin/tickets'), api('GET', '/v1/announcements'), api('GET', '/v1/kb')]);
+    // tickets
+    $('ticketList').replaceChildren(tickets.length ? h('table', {},
+      h('thead', {}, h('tr', {}, h('th', {}, '#'), h('th', {}, 'Subject'), h('th', {}, 'Business'), h('th', {}, 'Product'), h('th', {}, 'Status'), h('th', {}, 'Updated'))),
+      h('tbody', {}, tickets.map((t) => h('tr', { style: 'cursor:pointer', onclick: () => { openTicket = t.id; void renderSupport(); } },
+        h('td', {}, `#${t.number}`), h('td', {}, t.subject), h('td', {}, t.account.name, h('div', { class: 'sub' }, t.openedBy ? t.openedBy.email : '')),
+        h('td', {}, t.product ? PRODUCT_NAME[t.product] : '-'), h('td', {}, chip(...TICKET_STATUS[t.status])), h('td', {}, ago(t.updatedAt))))))
+      : h('div', { class: 'muted' }, 'No tickets yet.'));
+    if (openTicket) {
+      const t = await api('GET', `/v1/admin/tickets/${openTicket}`);
+      const answer = h('textarea', { rows: '5', placeholder: 'Your answer (emailed to the customer)' });
+      const name = h('input', { placeholder: 'Signed (e.g. Ravi, support)', value: localStorage.getItem('supportName') || '' });
+      const send = (close) => supportRun(async () => {
+        localStorage.setItem('supportName', name.value);
+        await api('POST', `/v1/admin/tickets/${t.id}/reply`, { body: answer.value, name: name.value, close });
+      });
+      $('ticketView').replaceChildren(
+        h('div', { class: 'row between' }, h('h3', { style: 'margin:0' }, `#${t.number} ${t.subject}`), h('div', { class: 'row' }, chip(...TICKET_STATUS[t.status]), h('button', { onclick: () => { openTicket = null; void renderSupport(); } }, 'Close view'))),
+        h('div', { class: 'muted' }, `${t.account.name} · ${t.openedBy ? `${t.openedBy.name} <${t.openedBy.email}>` : ''} · ${t.product ? PRODUCT_NAME[t.product] : 'any product'} · opened ${when(t.createdAt)}`),
+        ...t.messages.map((m) => h('div', { style: `margin:10px 0;padding:10px 12px;border-radius:10px;white-space:pre-wrap;background:${m.from === 'staff' ? '#fff4ec' : '#f6f4f0'}` },
+          h('div', { class: 'sub' }, `${m.from === 'staff' ? 'Us' : 'Customer'}: ${m.name} · ${when(m.at)}`), m.body)),
+        answer, h('div', { class: 'row', style: 'margin-top:8px' }, name,
+          h('button', { class: 'primary', onclick: () => send(false) }, 'Send answer'),
+          h('button', { onclick: () => send(true) }, 'Send and close'),
+          t.status !== 'closed' ? h('button', { onclick: () => supportRun(() => api('POST', `/v1/admin/tickets/${t.id}/close`)) }, 'Close without answer') : null));
+      $('ticketView').classList.remove('hidden');
+    } else { $('ticketView').replaceChildren(); $('ticketView').classList.add('hidden'); }
+    // announcements
+    const aTitle = h('input', { placeholder: 'Title, e.g. DinePOS 0.1.7 is out' }), aBody = h('textarea', { rows: '3', placeholder: 'What is new' }), aProduct = productSelect('Announcement product');
+    $('announceBox').replaceChildren(
+      ...announcements.map((a) => h('div', { class: 'row between', style: 'padding:6px 0;border-bottom:1px solid var(--line)' },
+        h('div', {}, h('b', {}, a.title), h('div', { class: 'sub' }, `${a.product ? PRODUCT_NAME[a.product] : 'Everyone'} · ${when(a.publishedAt)}`)),
+        h('button', { onclick: () => confirm(`Delete "${a.title}"?`) && supportRun(() => api('POST', `/v1/admin/announcements/${a.id}/delete`)) }, 'Delete'))),
+      h('div', { style: 'margin-top:10px', class: 'stack' }, aTitle, aBody, h('div', { class: 'row' }, aProduct,
+        h('button', { class: 'primary', onclick: () => supportRun(() => api('POST', '/v1/admin/announcements', { title: aTitle.value, body: aBody.value, product: aProduct.value || null })) }, 'Publish'))));
+    // knowledge base
+    const kSlug = h('input', { placeholder: 'Address (optional, made from the title)' }), kTitle = h('input', { placeholder: 'Title' }), kCat = h('input', { placeholder: 'Category, e.g. Getting started' });
+    const kBody = h('textarea', { rows: '6', placeholder: 'The article (plain text; blank lines make paragraphs)' }), kProduct = productSelect('Article product');
+    const edit = async (slug) => { const a = await api('GET', `/v1/kb/${slug}`); kSlug.value = a.slug; kTitle.value = a.title; kCat.value = a.category; kBody.value = a.body; kProduct.value = a.product || ''; kTitle.focus(); };
+    $('kbBox').replaceChildren(
+      ...articles.map((a) => h('div', { class: 'row between', style: 'padding:6px 0;border-bottom:1px solid var(--line)' },
+        h('div', {}, h('b', {}, a.title), h('div', { class: 'sub' }, `${a.category} · ${a.product ? PRODUCT_NAME[a.product] : 'Both products'} · /${a.slug}`)),
+        h('div', { class: 'row' }, h('button', { onclick: () => void edit(a.slug) }, 'Edit'),
+          h('button', { onclick: () => confirm(`Delete "${a.title}"?`) && supportRun(() => api('POST', `/v1/admin/kb/${a.slug}/delete`)) }, 'Delete')))),
+      h('div', { style: 'margin-top:10px', class: 'stack' }, kTitle, kSlug, kCat, kBody, h('div', { class: 'row' }, kProduct,
+        h('button', { class: 'primary', onclick: () => supportRun(() => api('POST', '/v1/admin/kb', { slug: kSlug.value, title: kTitle.value, category: kCat.value || 'General', body: kBody.value, product: kProduct.value || null })) }, 'Save article'))));
+  }
+
+  // ------------------------------------------------------------ brands: one website, the nearest outlet gets the order
+  async function renderBrands() {
+    const { brands } = await api('GET', '/v1/admin/brands');
+    const inBrand = new Set(brands.flatMap((b) => b.outlets.map((o) => o.slug)));
+    const err = h('div', { class: 'err' });
+    const run = async (fn) => { try { await fn(); await renderBrands(); } catch (e) { err.textContent = e.message; } };
+    const list = $('brandList');
+    if (!brands.length) { list.replaceChildren(h('div', { class: 'card muted' }, 'No brands yet. Add one below, then add its outlets.')); return; }
+    list.replaceChildren(err, ...brands.map((b) => {
+      const free = overview.stores.filter((s) => !inBrand.has(s.slug));
+      const pickStore = h('select', { 'aria-label': 'Store to add' }, h('option', { value: '' }, free.length ? 'Choose a store…' : 'Every store is in a brand'), ...free.map((s) => h('option', { value: s.slug }, `${s.name} (${s.slug})`)));
+      return h('div', { class: 'card' },
+        h('div', { class: 'row between' }, h('div', {}, h('h3', { style: 'margin:0' }, b.name), h('div', { class: 'muted' }, `/order/${b.slug}`)), h('div', { class: 'muted' }, `${b.outlets.length} outlet${b.outlets.length === 1 ? '' : 's'}`)),
+        b.outlets.length ? h('div', {}, ...b.outlets.map((o) => h('div', { class: 'row between', style: 'padding:6px 0;border-top:1px solid var(--line, #eee)' },
+          h('div', {}, h('b', {}, o.name), ' ', h('span', { class: 'muted' }, o.slug), o.slug === b.mainStore ? chip('plain', 'Main: website design') : null, h('div', { class: 'muted' }, [o.location || 'No location set', o.pickup ? 'pickup' : null, o.delivery ? 'delivery' : null].filter(Boolean).join(' · '))),
+          h('div', { class: 'row' }, o.connected ? chip('ok', 'POS online') : chip('bad', 'POS offline'), o.pausedReason ? chip('bad', 'Paused by hub') : null,
+            o.accepting ? chip('ok', 'Shift open') : chip('warn', 'Not accepting'), o.open.open ? chip('ok', 'Taking orders') : chip('plain', o.open.reason || 'Closed'),
+            o.slug === b.mainStore ? null : h('button', { onclick: () => run(() => api('PUT', `/v1/admin/brands/${encodeURIComponent(b.slug)}/main`, { store: o.slug })) }, 'Make main'),
+            h('button', { onclick: () => { if (confirm(`Take ${o.name} out of ${b.name}? The store and its orders stay.`)) run(() => api('DELETE', `/v1/admin/brands/${encodeURIComponent(b.slug)}/stores/${encodeURIComponent(o.slug)}`)); } }, 'Remove'))))) : h('p', { class: 'muted' }, 'No outlets yet.'),
+        h('div', { class: 'row' }, pickStore, h('button', { class: 'primary', onclick: () => pickStore.value && run(() => api('PUT', `/v1/admin/brands/${encodeURIComponent(b.slug)}/stores/${encodeURIComponent(pickStore.value)}`)) }, 'Add outlet')));
+    }));
+  }
+  $('brandForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    $('brandErr').textContent = '';
+    try {
+      await api('POST', '/v1/admin/brands', { slug: $('brandSlug').value.trim(), name: $('brandName').value.trim() });
+      $('brandForm').reset();
+      await renderBrands();
+    } catch (e) { $('brandErr').textContent = e.message; }
+  });
+
+  // ------------------------------------------------------------ one store
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  async function renderStore(slug) {
+    const box = $('store');
+    let s;
+    try { s = await api('GET', `/v1/admin/stores/${encodeURIComponent(slug)}`); }
+    catch (e) { box.replaceChildren(h('p', {}, h('a', { href: '#stores' }, '← All stores')), h('div', { class: 'card err' }, e.message)); return; }
+    const p = s.published, link = ui.links.get(slug);
+    const upState = await loadUp(slug).catch((e) => ({ error: e.message }));
+    const sales = await api('GET', `/v1/admin/stores/${encodeURIComponent(slug)}/sales`).catch((e) => ({ error: e.message }));
+    const lic = await api('GET', `/v1/admin/stores/${encodeURIComponent(slug)}/licence`).catch((e) => ({ error: e.message }));
+    const hosted = await api('GET', `/v1/admin/stores/${encodeURIComponent(slug)}/hosted`).catch((e) => ({ error: e.message }));
+    const err = h('div', { class: 'err' });
+    const pauseInput = h('input', { maxlength: '200', placeholder: 'This store is not taking online orders right now.' });
+    box.replaceChildren(
+      h('p', { style: 'margin:14px 0 0' }, h('a', { href: '#stores' }, '← All stores')),
+      h('div', { class: 'row between' }, h('div', {}, h('h2', { style: 'margin-bottom:0' }, s.name), h('div', { class: 'muted' }, `Ordering page: `, h('a', { href: `/order/${encodeURIComponent(s.slug)}`, target: '_blank', rel: 'noopener' }, `/order/${s.slug}`))), h('div', { class: 'row' }, statusChips(s))),
+      !s.open.open && s.open.reason ? h('div', { class: 'banner info' }, `Customers see: "${s.open.reason}"`) : null,
+      h('div', { class: 'card' },
+        h('div', { class: 'stats', style: 'margin-top:0' }, h('div', {}, h('b', {}, s.openOrders), 'open orders'), h('div', {}, h('b', {}, s.ordersLastDay), 'orders in 24 h'),
+          h('div', {}, h('b', {}, ago(s.lastSeenAt)), 'POS last seen'), h('div', {}, h('b', {}, when(s.createdAt)), 'added')),
+        h('div', { class: 'actions' },
+          h('button', { onclick: () => { ui.orderStore = slug; location.hash = '#orders'; } }, 'View orders'),
+          h('button', { onclick: async () => { try { ui.links.set(slug, await api('POST', `/v1/admin/stores/${encodeURIComponent(slug)}/pairing-code`)); renderStore(slug); } catch (e) { err.textContent = e.message; } } }, 'New connection link'),
+          s.pausedReason ? h('button', { class: 'primary', onclick: () => pause(slug, false, '', err) }, 'Resume online orders')
+            : h('button', { class: 'danger', onclick: () => { ui.pausing = !ui.pausing; renderStore(slug); } }, 'Pause online orders')),
+        err,
+        ui.pausing && !s.pausedReason ? h('div', { class: 'box' }, h('label', {}, 'Message for customers'), pauseInput,
+          h('div', { class: 'hint' }, 'Customers cannot order until you resume, even if the shop opens a shift. The shop’s POS is not told, so let the shop know.'),
+          h('div', { class: 'actions' }, h('button', { class: 'danger', onclick: () => pause(slug, true, pauseInput.value, err) }, 'Pause now'), h('button', { onclick: () => { ui.pausing = false; renderStore(slug); } }, 'Cancel'))) : null,
+        s.pausedReason ? h('div', { class: 'box' }, 'Paused. Customers see: ', h('b', {}, s.pausedReason)) : null,
+        link ? linkBox(link, 'Connection link for this store:') : null),
+
+      h('h2', {}, 'Website builder'),
+      siteEditorCard(slug, s.website),
+
+      h('h2', {}, 'POS devices'),
+      h('div', { class: 'card scroll' }, s.devices.length ? h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Device'), h('th', {}, 'Connected on'), h('th', {}, ''))),
+        h('tbody', {}, s.devices.map((d) => h('tr', {}, h('td', {}, d.name), h('td', {}, when(d.createdAt)),
+          h('td', { class: 'num' }, d.revokedAt ? h('span', { class: 'muted' }, `Revoked ${when(d.revokedAt)}`) : h('button', { class: 'danger', onclick: () => revoke(s, d) }, 'Revoke'))))))
+        : h('p', { class: 'muted', style: 'margin:0' }, 'No POS connected yet. Make a connection link and send it to the shop.')),
+
+      h('h2', {}, 'DinePOS in the cloud (no main PC)'),
+      hosted.error ? h('div', { class: 'card err' }, hosted.error) : hostedCard(slug, hosted),
+
+      h('h2', {}, 'Sales (DinePOS)'),
+      sales.error ? h('div', { class: 'card err' }, sales.error) : salesCard(sales),
+      h('h2', {}, 'Licence (DinePOS)'),
+      lic.error ? h('div', { class: 'card err' }, lic.error) : licenceCard(slug, lic),
+
+      h('h2', {}, 'Swiggy & Zomato (UrbanPiper)'),
+      upState.error ? h('div', { class: 'card err' }, upState.error) : upCard(slug, upState, Boolean(p)),
+
+      h('h2', {}, 'Store settings'),
+      p ? storeSettings(p) : h('div', { class: 'card muted' }, 'Nothing published yet. The settings appear here once the shop’s POS connects and turns on online orders.'),
+      p ? h('p', { class: 'muted' }, `Set by the shop in its POS (Settings > Online orders and Serviceability) and sent here with menu version ${s.menuVersion}. Change them there.`) : null);
+  }
+
+  // P6-04: an outlet whose DinePOS server runs in this cloud (no main PC at the outlet).
+  function hostedCard(slug, v) {
+    const err = h('div', { class: 'err' }), note = h('div', { class: 'hint' });
+    const path = `/v1/admin/stores/${encodeURIComponent(slug)}/hosted`;
+    const run = async (fn, okText) => { err.textContent = ''; try { await fn(); if (okText) ui.hostedNote = okText; await renderStore(slug); } catch (e) { err.textContent = e.message; } };
+    if (!v.available && !v.hosted) return h('div', { class: 'card muted' }, 'This cloud has no DinePOS outlet server installed (cloud/outlet-server). Update the cloud (sudo dinepos-cloud-update).');
+    if (!v.hosted) {
+      return h('div', { class: 'card' },
+        h('p', { style: 'margin-top:0' }, 'Run this outlet’s DinePOS in the cloud: no main PC at the outlet. Terminals, captain phones and kitchen screens connect to ', h('b', {}, v.deviceUrl || 'its cloud address'), '. Billing then needs the internet; printers need a DinePOS Print Agent at the outlet.'),
+        h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => confirm('Run this outlet’s DinePOS in the cloud?') && run(() => api('PUT', path, { enabled: true }), 'Started.') }, 'Run this outlet in the cloud')),
+        err);
+    }
+    const chips = h('div', { class: 'row' }, v.running ? chip('ok', 'Running') : chip('bad', 'Stopped'), v.restarts ? chip('bad', `Restarted ${v.restarts}×`) : null);
+    const parts = [chips, v.deviceUrl ? h('p', {}, 'Devices use: ', h('b', {}, v.deviceUrl), ' (terminal: Settings › This terminal; captain phone: ', h('b', {}, `${v.deviceUrl}/captain`), '; kitchen: ', h('b', {}, `${v.deviceUrl}/kds`), ').') : null,
+      v.lastExit && !v.running ? h('div', { class: 'box err' }, `Last stop: ${v.lastExit}`) : null];
+    if (v.setup && v.setup.setupNeeded) {
+      const outlet = h('input', { maxlength: '60', placeholder: 'As on the bill' }), owner = h('input', { maxlength: '40', placeholder: 'Owner’s name' }), pin = h('input', { type: 'password', inputmode: 'numeric', maxlength: '6', placeholder: '4–6 digits' });
+      parts.push(h('div', { class: 'box' }, h('b', {}, 'First step: the outlet and its owner'),
+        h('label', {}, 'Outlet name'), outlet, h('label', {}, 'Owner'), owner, h('label', {}, 'Owner’s PIN'), pin,
+        h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => run(() => api('POST', `${path}/setup`, { outletName: outlet.value, ownerName: owner.value, pin: pin.value }), 'Outlet set up. Now pair the first terminal.') }, 'Set up'))));
+    } else if (v.setup) {
+      const code = h('input', { inputmode: 'numeric', maxlength: '7', placeholder: '6-digit code on the device' }), pin = h('input', { type: 'password', inputmode: 'numeric', maxlength: '6', placeholder: 'Owner’s PIN' });
+      parts.push(h('div', { class: 'box' }, h('b', {}, `Pair a device (${v.setup.outletName})`),
+        h('div', { class: 'hint' }, 'Open DinePOS on the first terminal with the address above: it shows a pairing code. Enter it here with the owner’s PIN. Later devices can be approved on that terminal (Settings › Devices).'),
+        h('label', {}, 'Pairing code'), code, h('label', {}, 'Owner’s PIN'), pin,
+        h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => run(() => api('POST', `${path}/approve`, { code: code.value, pin: pin.value }), 'Device paired: it opens by itself.') }, 'Approve'))));
+    }
+    if (ui.hostedNote) { note.textContent = ui.hostedNote; ui.hostedNote = ''; }
+    parts.push(note, err, h('div', { class: 'actions' }, v.running ? null : h('button', { onclick: () => run(() => api('PUT', path, { enabled: true }), 'Started.') }, 'Start again'),
+      h('button', { class: 'danger', onclick: () => confirm('Stop running this outlet in the cloud? Devices cannot bill until it runs again. Its data is kept.') && run(() => api('PUT', path, { enabled: false }), 'Stopped. Its data is kept.') }, 'Stop running in the cloud')));
+    return h('div', { class: 'card' }, ...parts);
+  }
+
+  // The website builder lives on the ordering website (/admin). Here only its sign-in: one password per store, shown once.
+  function siteEditorCard(slug, w) {
+    const err = h('div', { class: 'err' }), shown = ui.sitePasswords.get(slug);
+    const make = async () => {
+      if (w.editorPassword && !confirm('Make a new website editor password? The old one stops working and everyone signed in to the website builder is signed out.')) return;
+      try { ui.sitePasswords.set(slug, (await api('POST', `/v1/admin/stores/${encodeURIComponent(slug)}/site-password`, {})).password); renderStore(slug); } catch (e) { err.textContent = e.message; }
+    };
+    return h('div', { class: 'card' },
+      h('p', { class: 'muted', style: 'margin-top:0' }, 'The shop designs its ordering website itself, in the website builder: open the website’s address with /admin at the end and sign in with this password. It works for this store only.'),
+      kv('Editor password', w.editorPassword ? chip('ok', 'Set') : chip('plain', 'Not set')), kv('Website last published', w.publishedAt ? when(w.publishedAt) : 'Never (the standard design)'),
+      shown ? h('div', { class: 'box' }, 'New password (shown only now; send it to the shop): ', h('b', { style: 'font-family:ui-monospace,Consolas,monospace;font-size:16px' }, shown)) : null,
+      h('div', { class: 'actions' }, h('button', { onclick: make }, w.editorPassword ? 'New editor password' : 'Make editor password')), err);
+  }
+
+  // ------------------------------------------------------------ DinePOS outlets: sales sent up, licence renewals down
+  const MODE = { cash: 'Cash', card: 'Card', upi: 'UPI', due: 'Due', complimentary: 'Complimentary', other: 'Other', online: 'Paid online' };
+  function salesCard(v) {
+    if (!v.days.length) return h('div', { class: 'card muted' }, 'No sales received. A DinePOS outlet sends its bills and day-end reports here once it is connected to this hub.');
+    return h('div', { class: 'card scroll' },
+      h('p', { class: 'muted', style: 'margin-top:0' }, `Last received ${ago(v.lastSyncAt)}. An open day is added up from the bills received so far; a closed day shows its Z report.`),
+      h('table', {},
+        h('thead', {}, h('tr', {}, h('th', {}, 'Business day'), h('th', { class: 'num' }, 'Bills'), h('th', { class: 'num' }, 'Net sales'), h('th', { class: 'num' }, 'GST'), h('th', {}, 'Payments'), h('th', { class: 'num' }, 'Voids'), h('th', { class: 'num' }, 'Cash short/over'))),
+        h('tbody', {}, v.days.map((d) => h('tr', {},
+          h('td', {}, d.businessDate, ' ', d.closed ? chip('ok', 'Closed') : chip('plain', 'Open')),
+          h('td', { class: 'num' }, d.bills), h('td', { class: 'num' }, rupees(d.netSalesPaise)), h('td', { class: 'num' }, d.taxPaise == null ? '-' : rupees(d.taxPaise)),
+          h('td', {}, d.byMode.length ? d.byMode.map((m) => `${MODE[m.mode] || m.mode} ${rupees(m.amountPaise)}`).join(', ') : '-'),
+          h('td', { class: 'num' }, d.voids ? `${d.voids} (${rupees(d.voidPaise)})` : '0'),
+          h('td', { class: 'num' }, d.cashDifferencePaise == null ? '-' : d.cashDifferencePaise === 0 ? 'Matched' : `${d.cashDifferencePaise < 0 ? 'Short' : 'Over'} ${rupees(Math.abs(d.cashDifferencePaise))}`))))));
+  }
+  function licenceCard(slug, lic) {
+    const err = h('div', { class: 'err' });
+    const input = h('textarea', { rows: '3', style: 'font-family:monospace', placeholder: 'Paste the licence key from the DinePOS key generator', oninput: (e) => ui.licence.set(slug, e.target.value) });
+    input.value = ui.licence.get(slug) || '';
+    const save = async (key) => { try { await api('PUT', `/v1/admin/stores/${encodeURIComponent(slug)}/licence`, { key }); ui.licence.delete(slug); renderStore(slug); } catch (e) { err.textContent = e.message; } };
+    return h('div', { class: 'card' },
+      lic.set ? [kv('Licensed to', lic.licensee || '-'), kv('Ends', lic.expiresAt ? lic.expiresAt.slice(0, 10) : '-'), kv('For PC', lic.hardwareId || '-'), kv('Put here', when(lic.updatedAt))]
+        : h('p', { class: 'muted', style: 'margin-top:0' }, 'No licence key here. Paste a renewed key and the outlet’s POS installs it by itself within an hour (or at once from Settings › Cloud sync).'),
+      h('label', { style: 'margin-top:10px;display:block' }, lic.set ? 'Replace with a renewed key' : 'Licence key'), input,
+      h('div', { class: 'hint' }, 'The POS checks the key itself: it must be genuine, made for that PC and end later than the key it has.'),
+      h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: () => save(input.value) }, 'Save key'),
+        lic.set ? h('button', { class: 'danger', onclick: () => { if (confirm('Remove the key from the hub? The POS keeps the key it has installed.')) save(''); } }, 'Remove from hub') : null),
+      err, grantsBox(slug, lic));
+  }
+  /** P7-02: keys this cloud signed for the store, and a form to sign one (at most 400 days). */
+  function grantsBox(slug, lic) {
+    const box = h('div', { class: 'box' }, h('span', { class: 'muted' }, 'Loading cloud keys…'));
+    const KIND = { trial: 'Trial', paid: 'Paid', demo: 'Demo', manual: 'Made here' };
+    (async () => {
+      let r;
+      try { r = await api('GET', `/v1/admin/stores/${encodeURIComponent(slug)}/grants`); } catch (e) { box.replaceChildren(h('span', { class: 'err' }, e.message)); return; }
+      const err = h('div', { class: 'err' });
+      const f = { hw: h('input', { placeholder: 'AB12-CD34-EF56-7890-1A2B', value: lic.hardwareId || '' }), days: h('input', { type: 'number', min: '1', max: '400', value: '365' }),
+        t: h('input', { type: 'number', min: '1', value: '1' }), c: h('input', { type: 'number', min: '0', value: '2' }), k: h('input', { type: 'number', min: '0', value: '1' }) };
+      const issue = async () => {
+        try { await api('POST', `/v1/admin/stores/${encodeURIComponent(slug)}/grants`, { hardwareId: f.hw.value.trim(), days: Number(f.days.value), terminals: Number(f.t.value), captains: Number(f.c.value), kds: Number(f.k.value) }); renderStore(slug); }
+        catch (e) { err.textContent = e.message; }
+      };
+      const revoke = async (g) => { if (!confirm('Revoke this key? It is taken off the hub; a POS that already installed it keeps it until it ends.')) return; try { await api('POST', `/v1/admin/grants/${g.id}/revoke`, { reason: 'revoked by admin' }); renderStore(slug); } catch (e) { err.textContent = e.message; } };
+      box.replaceChildren(h('h3', {}, 'Keys signed by this cloud'),
+        r.grants.length ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Kind'), h('th', {}, 'PC'), h('th', {}, 'Seats'), h('th', {}, 'Ends'), h('th', {}, ''))),
+          h('tbody', {}, r.grants.map((g) => h('tr', {}, h('td', {}, KIND[g.kind] || g.kind), h('td', {}, g.hardwareId), h('td', {}, `${g.seats.terminals} T · ${g.seats.captains} C · ${g.seats.kds} K`),
+            h('td', {}, day(g.expiresAt)), h('td', {}, g.revokedAt ? chip('bad', 'revoked') : h('button', { class: 'danger', onclick: () => revoke(g) }, 'Revoke'))))))) : h('p', { class: 'muted' }, 'None yet.'),
+        r.ready ? [h('div', { class: 'grid' }, h('div', {}, h('label', {}, 'Hardware id'), f.hw), h('div', {}, h('label', {}, 'Days (1 to 400)'), f.days),
+            h('div', {}, h('label', {}, 'Terminals'), f.t), h('div', {}, h('label', {}, 'Captain phones'), f.c), h('div', {}, h('label', {}, 'Kitchen screens'), f.k)),
+          h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: issue }, 'Sign a key and put it here')), err]
+          : h('p', { class: 'muted' }, 'This cloud has no signing key yet: on the server run npm run admin -- cloud-key import <file.pem>, then restart it.'));
+    })();
+    return box;
+  }
+
+  function storeSettings(p) {
+    const o = p.options, sv = p.serviceability;
+    const channels = Object.entries(o.channels).filter(([, on]) => on).map(([c]) => ({ app: 'App', website: 'Website', swiggy: 'Swiggy', zomato: 'Zomato' })[c] || c);
+    let from = 0;
+    return h('div', { class: 'cols' },
+      h('div', { class: 'card' }, h('h3', {}, 'Orders'),
+        kv('Accepting orders', o.acceptMode === 'auto' ? 'Automatically' : `By staff, within ${o.acceptTimeoutMin} min`),
+        kv('Sales channels', channels.length ? channels.join(', ') : 'None'),
+        kv('Pickup', yesNo(o.fulfilment.pickup)), kv('Delivery', yesNo(o.fulfilment.delivery)),
+        kv('Cash on delivery', yesNo(o.payments.cod)), kv('Online payment', yesNo(o.payments.online && overview.hub.onlinePayments, 'On', o.payments.online ? 'On in POS; not on this hub yet' : 'Off'))),
+      h('div', { class: 'card' }, h('h3', {}, 'Pickup and charges'),
+        kv('Pickup minimum order', rupees(sv.pickup.minOrder)), kv('Pickup ready in', `${sv.pickup.etaMinutes} min`),
+        kv('Packaging charge', sv.packagingFee ? rupees(sv.packagingFee) : 'None'),
+        kv('GST on charges', p.feeTax ? `${p.feeTax.rateBp / 100}%${p.feeTax.cessBp ? ` + cess ${p.feeTax.cessBp / 100}%` : ''}${p.feeTax.priceIncludesTax ? ' (included)' : ''}` : 'Not set: no fees charged'),
+        kv('Round bills to the rupee', yesNo(p.roundToRupee, 'Yes', 'No'))),
+      h('div', { class: 'card' }, h('h3', {}, 'Delivery area'),
+        kv('Store location', sv.location ? [sv.location.label || 'Set', ' ', h('a', { href: `https://www.openstreetmap.org/?mlat=${sv.location.lat}&mlon=${sv.location.lng}#map=16/${sv.location.lat}/${sv.location.lng}`, target: '_blank', rel: 'noopener noreferrer' }, 'map')] : chip('warn', 'Not set: no delivery')),
+        kv('Road factor', overview.hub.routingOverridden || overview.settings.routingUrl ? 'Road distances from the routing server' : `× ${sv.roadFactor ?? 1.3}`),
+        sv.zones.length ? h('table', { style: 'margin-top:8px' }, h('thead', {}, h('tr', {}, h('th', {}, 'Distance'), h('th', { class: 'num' }, 'Fee'), h('th', { class: 'num' }, 'Min order'), h('th', { class: 'num' }, 'Free above'), h('th', { class: 'num' }, 'Time'))),
+          h('tbody', {}, sv.zones.map((z) => { const r = h('tr', {}, h('td', {}, `${from}–${z.upToKm} km`), h('td', { class: 'num' }, rupees(z.deliveryFee)), h('td', { class: 'num' }, rupees(z.minOrder)), h('td', { class: 'num' }, z.freeDeliveryAbove == null ? '-' : rupees(z.freeDeliveryAbove)), h('td', { class: 'num' }, `${z.etaMinutes} min`)); from = z.upToKm; return r; })))
+          : h('p', { class: 'muted' }, 'No delivery areas.')),
+      h('div', { class: 'card' }, h('h3', {}, 'Opening hours'),
+        [1, 2, 3, 4, 5, 6, 0].map((d) => kv(DAYS[d], (sv.hours[String(d)] || []).length ? sv.hours[String(d)].map((x) => `${x.open}–${x.close}`).join(', ') : chip('plain', 'Closed')))),
+      h('div', { class: 'card' }, h('h3', {}, 'Menu'),
+        kv('Items', `${p.menu.items}${p.menu.unavailable ? ` (${p.menu.unavailable} not available now)` : ''}`),
+        p.menu.categories.map((c) => kv(c.name, `${c.items} items`))));
+  }
+
+  // ------------------------------------------------------------ Swiggy & Zomato through UrbanPiper
+  // One account for the hub (Hub settings) and each store's own details (store page). Forms keep what was typed
+  // (st.draft) across the page's 15-second refresh; the API key is never shown back.
+  const UP_PATH = (slug) => `/v1/admin/stores/${encodeURIComponent(slug)}/urbanpiper`;
+  const DIR = { out: '→ UrbanPiper', in: '← UrbanPiper' };
+  const acctDraft = (v) => ({ env: v.env, baseUrl: v.env === 'production' ? v.baseUrl : '', username: v.username, apiKey: '', bizId: v.bizId });
+  const storeDraft = (v) => ({ locationRef: v.locationRef, city: v.city, address: v.address, phone: v.phone, platforms: [...v.platforms], enabled: v.enabled, packMode: v.packMode, packValue: v.packValue });
+  /** A text field bound to st.draft[k]; errors from st.errors. */
+  function upField(st, k, label, attrs = {}, hint) {
+    return h('div', {}, h('label', { for: `up-${k}` }, label),
+      h('input', { id: `up-${k}`, value: st.draft[k] ?? '', autocomplete: 'off', spellcheck: 'false', ...attrs, oninput: (e) => { st.draft[k] = e.target.value; st.dirty = true; } }),
+      hint ? h('div', { class: 'hint' }, hint) : null, h('div', { class: 'err' }, st.errors[k] || ''));
+  }
+  function upLog(v) {
+    return [h('h3', { style: 'margin-top:14px' }, 'Activity', v.pending ? h('span', { class: 'muted', style: 'font-weight:400' }, ` (${v.pending} waiting to be sent)`) : null),
+      v.log.length ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, ''), h('th', {}, 'What'), h('th', {}, ''), h('th', {}, 'Result'))),
+        h('tbody', {}, v.log.map((l) => h('tr', {}, h('td', {}, `${day(l.at)} ${clock(l.at)}`), h('td', { class: 'muted' }, DIR[l.dir]), h('td', {}, l.kind), h('td', {}, chip(l.ok ? 'ok' : 'bad', l.ok ? 'OK' : 'Failed')), h('td', { style: 'white-space:normal' }, l.text))))))
+        : h('p', { class: 'muted' }, 'Nothing yet.')];
+  }
+  async function upRun(st, fn, rerender) {
+    st.busy = true; st.msg = null; st.errors = {}; rerender();
+    try { await fn(); } catch (e) { st.errors = e.fields || {}; st.msg = { ok: false, text: e.message }; }
+    st.busy = false; await rerender();
+  }
+
+  // ---- the account (Hub settings)
+  let acct = null;
+  async function renderAccount() {
+    try {
+      const view = await api('GET', '/v1/admin/urbanpiper');
+      if (!acct) acct = { view, draft: acctDraft(view), dirty: false, errors: {}, msg: null, busy: false };
+      else { acct.view = view; if (!acct.dirty) acct.draft = acctDraft(view); }
+    } catch (e) { $('upAccount').replaceChildren(h('div', { class: 'card err' }, e.message)); return; }
+    const st = acct, v = st.view, d = st.draft, busy = st.busy;
+    const run = (fn) => upRun(st, fn, renderAccount);
+    const btn = (text, fn, cls) => h('button', { class: cls, disabled: busy || (st.dirty && text !== 'Save account'), onclick: () => run(fn) }, busy ? '…' : text);
+    $('upAccount').replaceChildren(h('div', { class: 'card' },
+      h('div', { class: 'row between' },
+        h('div', { class: 'muted', style: 'max-width:640px' }, 'Your UrbanPiper account, used for every store. Enter it from UrbanPiper\'s welcome email (or the Postman collection). Then add each store\'s own details on its store page.'),
+        h('div', { class: 'row' }, v.set ? chip(v.env === 'staging' ? 'warn' : 'ok', v.env === 'staging' ? 'Test account' : 'Live account') : chip('plain', 'Not set up'), v.set ? chip('plain', `${v.stores} store${v.stores === 1 ? '' : 's'}`) : null)),
+      h('div', { class: 'grid' },
+        h('div', {}, h('label', { for: 'up-env' }, 'UrbanPiper account'),
+          h('select', { id: 'up-env', onchange: (e) => { d.env = e.target.value; st.dirty = true; renderAccount(); } },
+            h('option', { value: 'staging', selected: d.env === 'staging' }, 'Test account (pos-int.urbanpiper.com)'),
+            h('option', { value: 'production', selected: d.env === 'production' }, 'Live account')),
+          h('div', { class: 'hint' }, 'Use the test account until UrbanPiper certifies the setup.')),
+        d.env === 'production' ? upField(st, 'baseUrl', 'Live address', { placeholder: 'https://…urbanpiper.com' }, 'From UrbanPiper\'s certification email.') : null,
+        upField(st, 'username', 'API username', { placeholder: 'from "apikey username:key"' }),
+        upField(st, 'apiKey', 'API key', { type: 'password', placeholder: v.set ? `Saved (ends ${v.apiKeyHint})` : 'the part after the colon' }, v.set ? 'Leave empty to keep the saved key. Kept on the hub only; never shown again.' : 'Kept on the hub only; never shown again.'),
+        upField(st, 'bizId', 'Biz ID', { inputmode: 'numeric', placeholder: 'e.g. 324255' }, 'The X-UPR-Biz-Id number.')),
+      h('div', { class: 'actions' },
+        btn(st.dirty || !v.set ? 'Save account' : 'Saved', async () => { st.view = await api('PUT', '/v1/admin/urbanpiper', d); st.draft = acctDraft(st.view); st.dirty = false; st.msg = { ok: true, text: 'Saved. Next: Test connection, then Set up order links. Then add each store\'s details on its store page.' }; }, 'primary'),
+        v.set ? [
+          btn('Test connection', async () => { const r = await api('POST', '/v1/admin/urbanpiper/test'); st.msg = { ok: r.ok, text: r.message }; }),
+          btn('Set up order links', async () => { const r = await api('POST', '/v1/admin/urbanpiper/webhooks'); st.msg = { ok: r.ok, text: r.message }; }),
+          h('button', { class: 'danger', disabled: busy, onclick: () => { if (confirm('Remove the UrbanPiper account? Swiggy and Zomato orders are then refused for all stores.')) run(async () => { await api('DELETE', '/v1/admin/urbanpiper'); acct = null; }); } }, 'Remove'),
+        ] : null),
+      st.dirty && v.set ? h('div', { class: 'hint' }, 'Save the changes before testing.') : null,
+      st.msg ? h('div', { class: st.msg.ok ? 'box' : 'banner' }, st.msg.text) : null,
+      v.set ? h('div', { class: 'box' },
+        h('div', {}, 'UrbanPiper sends orders for all stores to:'),
+        h('div', { class: 'linkbox' }, h('input', { readonly: true, value: v.webhookUrl, 'aria-label': 'Webhook address', onfocus: (e) => e.target.select() })),
+        v.webhookUrlProblem ? h('div', { class: 'err' }, v.webhookUrlProblem) : h('div', { class: 'hint' }, '"Set up order links" registers this address with UrbanPiper, with a secret only this hub knows. Orders sent without the secret are refused.')) : null,
+      v.set ? upLog(v) : null));
+  }
+
+  // ---- one store (store page)
+  async function loadUp(slug) {
+    const view = await api('GET', UP_PATH(slug));
+    let st = ui.up.get(slug);
+    if (!st) { st = { view, draft: storeDraft(view), dirty: false, errors: {}, msg: null, warnings: [], busy: false }; ui.up.set(slug, st); }
+    else { st.view = view; if (!st.dirty) st.draft = storeDraft(view); }
+    return st;
+  }
+  function upCard(slug, st, published) {
+    const v = st.view, d = st.draft, busy = st.busy;
+    const set = (k, val) => { d[k] = val; st.dirty = true; };
+    const run = (fn) => upRun(st, fn, () => renderStore(slug));
+    const action = (what, text) => h('button', { disabled: busy || st.dirty || !v.account.set || !published, onclick: () => run(async () => { const r = await api('POST', `${UP_PATH(slug)}/${what}`); st.msg = { ok: r.ok, text: r.message }; if (what === 'menu') st.warnings = r.warnings || []; }) }, busy ? '…' : text);
+    const platformBox = (pl, name) => h('label', { style: 'display:inline-flex;gap:6px;align-items:center;font-weight:400;margin-right:16px' },
+      h('input', { type: 'checkbox', style: 'width:auto', checked: d.platforms.includes(pl), 'aria-label': name, onchange: (e) => set('platforms', e.target.checked ? [...new Set([...d.platforms, pl])] : d.platforms.filter((x) => x !== pl)) }), channelBadge(pl));
+    return h('div', { class: 'card' },
+      h('div', { class: 'row between' },
+        h('div', { class: 'muted', style: 'max-width:640px' }, 'This store at UrbanPiper. Orders then appear on the shop\'s ODS like website orders, and accept, ready and cancel go back to Swiggy and Zomato.'),
+        h('div', { class: 'row' }, v.set ? chip(v.enabled ? 'ok' : 'warn', v.enabled ? 'Taking orders' : 'Orders off') : chip('plain', 'Not set up'))),
+      !v.account.set ? h('div', { class: 'banner info' }, 'The UrbanPiper account is not saved yet. ', h('a', { href: '#settings' }, 'Hub settings > Swiggy & Zomato'), ' first.')
+        : h('div', { class: 'hint' }, `Account: ${v.account.env === 'staging' ? 'test account' : 'live account'} (`, h('a', { href: '#settings' }, 'Hub settings'), ').'),
+      h('div', { class: 'grid' },
+        upField(st, 'locationRef', 'Store ID at UrbanPiper', { placeholder: slug }, 'Your own ID for this store at UrbanPiper. Keep it once orders flow.'),
+        upField(st, 'city', 'City', { placeholder: 'Bengaluru' }),
+        upField(st, 'address', 'Address', { placeholder: 'Shop address as customers see it' }),
+        upField(st, 'phone', 'Store phone', { inputmode: 'tel', placeholder: '080 4144 0067' }),
+        h('div', {}, h('label', { for: 'up-packMode' }, 'Packaging charge on Swiggy and Zomato'),
+          h('select', { id: 'up-packMode', onchange: (e) => { set('packMode', e.target.value); renderStore(slug); } },
+            h('option', { value: 'none', selected: d.packMode === 'none' }, 'None'),
+            h('option', { value: 'per_item', selected: d.packMode === 'per_item' }, '₹ per item'),
+            h('option', { value: 'percent', selected: d.packMode === 'percent' }, '% of the item price')),
+          h('div', { class: 'hint' }, 'Both platforms take packaging per item only. GST on it is set in Atlas (Zomato) or by your Swiggy contact.')),
+        d.packMode !== 'none' ? upField(st, 'packValue', d.packMode === 'percent' ? 'Packaging (% of item price)' : 'Packaging (₹ per item)', { inputmode: 'decimal', placeholder: d.packMode === 'percent' ? '5' : '10' }, 'Sent with the next menu.') : null),
+      h('label', {}, 'Platforms'), h('div', {}, platformBox('swiggy', 'Swiggy'), platformBox('zomato', 'Zomato')), h('div', { class: 'err' }, st.errors.platforms || ''),
+      h('label', { style: 'display:flex;gap:8px;align-items:center;font-weight:400;margin-top:12px' },
+        h('input', { type: 'checkbox', style: 'width:auto', checked: d.enabled, onchange: (e) => set('enabled', e.target.checked) }),
+        'Take Swiggy and Zomato orders for this store (off: orders are refused and the store is not switched on)'),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', disabled: busy, onclick: () => run(async () => { st.view = await api('PUT', UP_PATH(slug), d); st.draft = storeDraft(st.view); st.dirty = false; st.msg = { ok: true, text: 'Saved. Next: Send store details, then Send menu.' }; }) }, busy ? '…' : st.dirty || !v.set ? 'Save store details' : 'Saved'),
+        v.set ? [action('store', 'Send store details'), action('menu', 'Send menu'),
+          h('button', { class: 'danger', disabled: busy, onclick: () => { if (confirm('Remove this store\'s UrbanPiper details? Swiggy and Zomato orders for it are then refused.')) run(async () => { await api('DELETE', UP_PATH(slug)); ui.up.delete(slug); }); } }, 'Remove')] : null),
+      st.dirty && v.set ? h('div', { class: 'hint' }, 'Save the changes before sending.') : null,
+      v.set && !published ? h('div', { class: 'hint' }, 'Store details and menu can be sent once the shop\'s POS has connected and published them.') : null,
+      st.msg ? h('div', { class: st.msg.ok ? 'box' : 'banner' }, st.msg.text) : null,
+      st.warnings.length ? h('div', { class: 'banner info' }, h('b', {}, 'Swiggy and Zomato may refuse or hide some items:'), h('ul', { style: 'margin:6px 0 0;padding-left:18px' }, st.warnings.map((w) => h('li', {}, w)))) : null,
+      v.set ? upLog(v) : null);
+  }
+
+  async function pause(slug, paused, reason, err) {
+    try { await api('PUT', `/v1/admin/stores/${encodeURIComponent(slug)}/pause`, { paused, reason }); ui.pausing = false; await refresh(); }
+    catch (e) { err.textContent = e.message; }
+  }
+  async function revoke(s, d) {
+    if (!confirm(`Revoke "${d.name}" of ${s.name}? That POS stops receiving online orders at once and must connect again with a new link.`)) return;
+    try { await api('POST', `/v1/admin/devices/${encodeURIComponent(d.id)}/revoke`); await refresh(); } catch (e) { alert(e.message); }
+  }
+
+  // ------------------------------------------------------------ hub settings
+  const FIELDS = ['routingUrl', 'offlineAfterSec', 'pairingCodeMinutes', 'otpPerMinute', 'ordersPerMinute', 'pairPerMinute'];
+  $('settingsForm').addEventListener('input', () => { settingsDirty = true; $('settingsSaved').textContent = ''; });
+  function fillSettings() {
+    for (const f of FIELDS) $(f).value = overview.settings[f];
+    const hub = overview.hub;
+    $('fixed').replaceChildren(
+      kv('Show OTP codes on screen (HUB_DEV_OTP)', hub.devOtp ? chip('warn', 'On: development only') : chip('ok', 'Off')),
+      kv('Online payment (HUB_ONLINE_PAYMENTS)', chip('warn', hub.onlinePayments ? 'On' : 'Off: needs a payment gateway')),
+      kv('SMS provider for OTP', hub.smsProvider ? chip('ok', 'Set up') : chip('warn', 'Not built yet')),
+      hub.routingOverridden ? kv('Road routing', chip('warn', 'Fixed by the hub program; the setting above is ignored')) : '');
+  }
+  $('settingsForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    for (const el of document.querySelectorAll('[data-err]')) el.textContent = '';
+    $('settingsErr').textContent = '';
+    const body = Object.fromEntries(FIELDS.map((f) => [f, f === 'routingUrl' ? $(f).value.trim() : Number($(f).value)]));
+    try {
+      const { settings } = await api('PUT', '/v1/admin/settings', body);
+      overview.settings = settings; settingsDirty = false; fillSettings();
+      $('settingsSaved').textContent = 'Saved. In use now.';
+    } catch (e) {
+      if (e.fields) for (const [k, m] of Object.entries(e.fields)) { const el = document.querySelector(`[data-err="${k}"]`); if (el) el.textContent = m; }
+      else $('settingsErr').textContent = e.message;
+    }
+  });
+
+  // ------------------------------------------------------------ start
+  $('signout').addEventListener('click', (e) => { e.preventDefault(); signOut(); });
+  $('loginForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    key = $('key').value.trim(); $('loginErr').textContent = '';
+    try { await api('GET', '/v1/admin/overview'); keyStore.set(key); $('key').value = ''; start(); }
+    catch (e) { if (key) { key = ''; $('loginErr').textContent = e.message; } show(); }
+  });
+  function start() { show(); refresh(); clearInterval(timer); timer = setInterval(refresh, 15000); }
+  key ? start() : show();
+})();
+</script>
+</body>
+</html>

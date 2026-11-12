@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DinePOS account</title>
+<style>
+  /* The DinePOS look (apps/desktop/src/styles.css, docs/09): warm neutrals, orange primary, Manrope + Fraunces. */
+  @font-face { font-family: 'Manrope'; font-style: normal; font-weight: 400 800; font-display: swap; src: url('/fonts/manrope-latin.woff2') format('woff2'); }
+  @font-face { font-family: 'Fraunces'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('/fonts/fraunces-latin.woff2') format('woff2'); }
+  :root {
+    --radius: 10px;
+    --background: oklch(96.5% .008 80); --foreground: oklch(26% .03 50); --card: oklch(99.8% .003 80);
+    --primary: oklch(62% .19 42); --primary-foreground: oklch(99% .01 80);
+    --secondary: oklch(94.5% .015 75); --muted-foreground: oklch(52% .03 55); --border: oklch(90% .015 70); --ring: oklch(62% .19 42);
+    --danger: oklch(55% .22 27); --ok: oklch(58% .14 150);
+    --sans: "Manrope", system-ui, "Segoe UI", sans-serif; --display: "Fraunces", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  html { font-size: 15px; }
+  body { margin: 0; min-height: 100vh; font-family: var(--sans); line-height: 1.5; background: var(--background); color: var(--foreground); -webkit-font-smoothing: antialiased; }
+  a { color: var(--primary); font-weight: 600; }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; max-width: 980px; margin: 0 auto; }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--foreground); font-family: var(--display); font-weight: 600; font-size: 20px; }
+  .mark { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 12px; background: var(--primary); color: var(--primary-foreground); font-family: var(--display); font-size: 20px; }
+  main { max-width: 980px; margin: 0 auto; padding: 8px 16px 64px; }
+  .auth { max-width: 440px; margin: 24px auto; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: calc(var(--radius) + 4px); padding: 22px; }
+  h1 { font-family: var(--display); font-weight: 600; font-size: 26px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-family: var(--display); font-weight: 600; font-size: 19px; margin: 0 0 10px; }
+  .muted { color: var(--muted-foreground); font-size: 14px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+  input { width: 100%; height: 40px; font: inherit; font-size: 14px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); color: var(--foreground); outline: none; }
+  input:focus { border-color: var(--ring); }
+  input.code { height: 52px; font-size: 24px; letter-spacing: 8px; text-align: center; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .field-err { color: var(--danger); font-size: 13px; margin-top: 4px; }
+  .err { color: var(--danger); font-size: 14px; margin-top: 12px; font-weight: 600; }
+  .note { color: var(--ok); font-size: 14px; margin-top: 12px; font-weight: 600; }
+  button, a.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; font: inherit; font-size: 14px; font-weight: 600; border-radius: var(--radius); border: 1px solid var(--border); background: var(--card); color: var(--foreground); cursor: pointer; text-decoration: none; transition: background-color .15s, opacity .15s; }
+  button:hover:enabled { background: var(--secondary); }
+  button.primary, a.btn { width: 100%; margin-top: 18px; background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+  button.primary:hover:enabled, a.btn:hover { background: var(--primary); opacity: .9; }
+  a.btn { width: auto; margin-top: 4px; }
+  button.link { height: auto; border: 0; background: none; padding: 0; color: var(--primary); text-decoration: underline; }
+  button.link:hover:enabled { background: none; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .alt { margin-top: 16px; text-align: center; font-size: 14px; color: var(--muted-foreground); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  @media (max-width: 480px) { .two { grid-template-columns: 1fr; } }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px; }
+  .tile b { display: block; font-family: var(--display); font-weight: 600; font-size: 22px; margin-top: 2px; }
+  .chip { display: inline-block; font-family: var(--sans); font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 99px; background: var(--secondary); }
+  .kv { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .kv:last-child { border-bottom: 0; } .kv span:first-child { color: var(--muted-foreground); }
+  .stack > * + * { margin-top: 14px; }
+  .pins { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+  .pin { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; background: var(--secondary); font-size: 13px; }
+  .pin b { display: block; font-size: 20px; letter-spacing: 4px; font-variant-numeric: tabular-nums; }
+  #demo { border: 2px solid var(--primary); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <a class="logo" href="/app"><span class="mark" aria-hidden="true">D</span>DinePOS</a>
+  <div id="who" class="hidden"><span id="whoName" class="muted"></span> &nbsp;<button class="link" id="signout">Sign out</button></div>
+</header>
+<main>
+  <!-- sign up -->
+  <section id="v-signup" class="auth hidden"><div class="card">
+    <h1>Create your account</h1>
+    <p class="muted">Start your free trial of DinePOS. No card needed.</p>
+    <form id="f-signup" novalidate>
+      <label for="su-business">Restaurant or business name</label><input id="su-business" name="businessName" autocomplete="organization" maxlength="80" required><div class="field-err" data-for="businessName"></div>
+      <label for="su-name">Your name</label><input id="su-name" name="name" autocomplete="name" maxlength="80" required><div class="field-err" data-for="name"></div>
+      <div class="two">
+        <div><label for="su-email">Email</label><input id="su-email" name="email" type="email" autocomplete="email" required><div class="field-err" data-for="email"></div></div>
+        <div><label for="su-phone">Mobile</label><input id="su-phone" name="phone" type="tel" autocomplete="tel" placeholder="98765 43210" required><div class="field-err" data-for="phone"></div></div>
+      </div>
+      <label for="su-password">Password</label><input id="su-password" name="password" type="password" autocomplete="new-password" minlength="8" required><div class="field-err" data-for="password"></div>
+      <div class="err" data-err></div>
+      <button class="primary" type="submit">Create account</button>
+    </form>
+    <div class="alt">Already have an account? <a href="/login">Sign in</a></div>
+  </div></section>
+
+  <!-- the emailed code -->
+  <section id="v-verify" class="auth hidden"><div class="card">
+    <h1>Check your email</h1>
+    <p class="muted">We sent a 6-digit code to <b id="vf-email"></b>. It works for 10 minutes.</p>
+    <form id="f-verify" novalidate>
+      <label for="vf-code">Code</label><input id="vf-code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <div class="err" data-err></div><div class="note" data-note></div>
+      <button class="primary" type="submit">Verify and continue</button>
+    </form>
+    <div class="alt">No email? Check spam, or <button class="link" id="vf-resend">send a new code</button></div>
+  </div></section>
+
+  <!-- sign in -->
+  <section id="v-login" class="auth hidden"><div class="card">
+    <h1>Sign in</h1>
+    <p class="muted">Your DinePOS account: outlets, licences and billing.</p>
+    <form id="f-login" novalidate>
+      <label for="li-email">Email</label><input id="li-email" name="email" type="email" autocomplete="email" required>
+      <label for="li-password">Password</label><input id="li-password" name="password" type="password" autocomplete="current-password" required>
+      <div class="err" data-err></div>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    <div class="alt"><a href="/forgot">Forgot your password?</a> · <a href="/signup">Create an account</a></div>
+  </div></section>
+
+  <!-- forgot / reset -->
+  <section id="v-forgot" class="auth hidden"><div class="card">
+    <h1>Reset your password</h1>
+    <form id="f-forgot" novalidate>
+      <p class="muted">Enter your account email. We will send you a code.</p>
+      <label for="fg-email">Email</label><input id="fg-email" type="email" autocomplete="email" required>
+      <div class="err" data-err></div>
+      <button class="primary" type="submit">Send code</button>
+    </form>
+    <form id="f-reset" class="hidden" novalidate>
+      <p class="muted">If <b id="rs-email"></b> has an account, a code is on its way.</p>
+      <label for="rs-code">Code</label><input id="rs-code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
+      <label for="rs-password">New password</label><input id="rs-password" type="password" autocomplete="new-password" minlength="8" required><div class="field-err" data-for="password"></div>
+      <div class="err" data-err></div>
+      <button class="primary" type="submit">Set new password</button>
+    </form>
+    <div class="alt"><a href="/login">Back to sign in</a></div>
+  </div></section>
+
+  <!-- the account -->
+  <section id="v-app" class="hidden stack">
+    <div><h1 id="app-title"></h1><p class="muted" id="app-sub"></p></div>
+    <div class="tiles">
+      <div class="card tile"><span class="muted">Plan</span><b id="t-plan">Free trial</b><span class="muted">Choose a plan when your trial ends.</span></div>
+      <div class="card tile"><span class="muted">Outlets</span><b id="t-outlets">0</b><span class="muted" id="t-outlets-sub">Install DinePOS and sign in to add one.</span></div>
+      <div class="card tile"><span class="muted">Account status</span><b><span class="chip" id="t-status"></span></b></div>
+    </div>
+    <div class="card" id="demo"><h2>Try DinePOS in your browser</h2>
+      <div id="demo-body"><p class="muted">A sample restaurant with tables, a menu and staff, ready in about 30 seconds. Nothing to install. It is deleted after 3 days.</p>
+        <button class="primary" id="demo-start" style="width:auto">Start the browser demo</button></div>
+      <div class="err" id="demo-err"></div>
+    </div>
+    <div class="card"><h2>Get started</h2>
+      <ol class="muted" style="margin:0;padding-left:20px">
+        <li>Download DinePOS for Windows and install it on the outlet's main PC.</li>
+        <li>In DinePOS, open Settings › Licence and sign in with this account to start your trial.</li>
+        <li>Pair your other terminals, captain phones and kitchen screens.</li>
+      </ol>
+      <p class="muted" style="margin-bottom:0">Downloads and plans arrive here soon.</p>
+    </div>
+    <div class="card"><h2>Account</h2><div id="acct"></div></div>
+    <div class="card"><h2>Change password</h2>
+      <form id="f-password" novalidate style="max-width:420px">
+        <label for="pw-current">Current password</label><input id="pw-current" type="password" autocomplete="current-password" required><div class="field-err" data-for="current"></div>
+        <label for="pw-new">New password</label><input id="pw-new" type="password" autocomplete="new-password" minlength="8" required><div class="field-err" data-for="password"></div>
+        <div class="err" data-err></div><div class="note" data-note></div>
+        <button class="primary" type="submit" style="width:auto">Change password</button>
+        <p class="muted">Your other signed-in browsers are signed out.</p>
+      </form>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const VIEWS = { '/signup': 'signup', '/login': 'login', '/forgot': 'forgot', '/app': 'app' };
+  let pendingEmail = '';
+
+  async function api(method, path, body) {
+    const r = await fetch(path, { method, credentials: 'same-origin', headers: body === undefined ? {} : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) { const e = new Error(j?.error?.message || `Something went wrong (${r.status}).`); e.code = j?.error?.code; e.status = r.status; e.fields = j?.error?.details?.fields; e.details = j?.error?.details; throw e; }
+    return j;
+  }
+  function show(view, push) {
+    for (const v of ['signup', 'verify', 'login', 'forgot', 'app']) $(`v-${v}`).classList.toggle('hidden', v !== view);
+    const path = Object.keys(VIEWS).find((p) => VIEWS[p] === view);
+    if (push && path && location.pathname !== path) history.pushState({}, '', path);
+    const first = document.querySelector(`#v-${view} input`);
+    if (first && view !== 'app') first.focus();
+  }
+  function clearErrors(form) { for (const el of form.querySelectorAll('[data-err],[data-note],.field-err')) el.textContent = ''; }
+  function showError(form, e) {
+    const box = form.querySelector('[data-err]');
+    if (e.fields) for (const [k, msg] of Object.entries(e.fields)) { const f = form.querySelector(`[data-for="${k}"]`); if (f) f.textContent = msg; }
+    if (box) box.textContent = e.message;
+  }
+  function busy(form, on) { const b = form.querySelector('button[type=submit]'); if (b) b.disabled = on; }
+  function handle(form, fn) {
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault(); clearErrors(form); busy(form, true);
+      try { await fn(); } catch (e) { showError(form, e); } finally { busy(form, false); }
+    });
+  }
+  const verify = (email) => { pendingEmail = email; $('vf-email').textContent = email; $('vf-code').value = ''; show('verify'); };
+
+  handle($('f-signup'), async () => {
+    const f = $('f-signup');
+    const body = Object.fromEntries(['businessName', 'name', 'email', 'phone', 'password'].map((k) => [k, f.elements[k].value]));
+    const r = await api('POST', '/v1/account/signup', body);
+    verify(r.email);
+  });
+  handle($('f-verify'), async () => { await api('POST', '/v1/account/verify', { email: pendingEmail, code: $('vf-code').value }); await openApp(); });
+  $('vf-resend').addEventListener('click', async () => {
+    const f = $('f-verify'); clearErrors(f);
+    try { await api('POST', '/v1/account/resend', { email: pendingEmail }); f.querySelector('[data-note]').textContent = 'A new code is on its way.'; } catch (e) { showError(f, e); }
+  });
+  handle($('f-login'), async () => {
+    try { await api('POST', '/v1/account/login', { email: $('li-email').value, password: $('li-password').value }); await openApp(); }
+    catch (e) { if (e.code === 'EMAIL_NOT_VERIFIED') return verify(e.details?.email || $('li-email').value.trim().toLowerCase()); throw e; }
+  });
+  handle($('f-forgot'), async () => {
+    const email = $('fg-email').value.trim();
+    await api('POST', '/v1/account/forgot', { email });
+    pendingEmail = email; $('rs-email').textContent = email;
+    $('f-forgot').classList.add('hidden'); $('f-reset').classList.remove('hidden'); $('rs-code').focus();
+  });
+  handle($('f-reset'), async () => { await api('POST', '/v1/account/reset', { email: pendingEmail, code: $('rs-code').value, password: $('rs-password').value }); await openApp(); });
+  handle($('f-password'), async () => {
+    const f = $('f-password');
+    await api('POST', '/v1/account/password', { current: $('pw-current').value, password: $('pw-new').value });
+    f.reset(); f.querySelector('[data-note]').textContent = 'Password changed.';
+  });
+  $('signout').addEventListener('click', async () => { await api('POST', '/v1/account/logout').catch(() => null); $('who').classList.add('hidden'); show('login', true); });
+
+  const STATUS = { new: 'New', trial: 'Trial', active: 'Active', past_due: 'Payment due', suspended: 'Suspended', closed: 'Closed' };
+  function kv(k, v) { const d = document.createElement('div'); d.className = 'kv'; const a = document.createElement('span'); a.textContent = k; const b = document.createElement('span'); b.textContent = v; d.append(a, b); return d; }
+  async function openApp() {
+    let me;
+    try { me = await api('GET', '/v1/account/me'); } catch (e) { if (e.status === 401) return show('login', true); throw e; }
+    $('whoName').textContent = me.user.email; $('who').classList.remove('hidden');
+    $('app-title').textContent = me.account.name;
+    $('app-sub').textContent = `Welcome, ${me.user.name}.`;
+    $('t-status').textContent = STATUS[me.account.status] || me.account.status;
+    $('t-outlets').textContent = String(me.stores.length);
+    if (me.stores.length) $('t-outlets-sub').textContent = me.stores.map((s) => s.name).join(', ');
+    $('acct').replaceChildren(kv('Business', me.account.name), kv('Mobile', me.account.phone), kv('GSTIN', me.account.gstin || 'Not added'),
+      kv('Signed in as', `${me.user.name} (${me.user.email})`), kv('Role', me.user.role[0].toUpperCase() + me.user.role.slice(1)),
+      kv('Customer since', new Date(me.account.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })));
+    show('app', true);
+    renderDemo(await api('GET', '/v1/account/demo').catch(() => null));
+  }
+
+  // ---- P7-04: the browser demo
+  function el(tag, attrs, ...kids) { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); for (const k of kids) e.append(k); return e; }
+  function renderDemo(r) {
+    const body = $('demo-body'), err = $('demo-err');
+    if (!r) return;
+    if (r.demo && r.demo.url) {
+      const ends = new Date(r.demo.expiresAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+      body.replaceChildren(
+        el('p', { class: 'muted' }, `Your demo restaurant is ready until ${ends}. Sign in on the terminal with one of these PINs:`),
+        el('div', { class: 'pins' }, ...r.demo.staff.map((s) => el('div', { class: 'pin' }, s.name, el('b', {}, s.pin)))),
+        el('a', { class: 'btn', href: r.demo.url, target: '_blank', rel: 'noopener' }, 'Open the demo terminal'),
+        el('p', { class: 'muted' }, 'Open a table, add items, send the KOT, print and settle the bill. Printing goes to sample printers.'));
+      return;
+    }
+    if (!r.available) { body.replaceChildren(el('p', { class: 'muted' }, r.reason || 'The browser demo is not available right now. Start the free Windows trial instead.')); return; }
+    const btn = $('demo-start');
+    if (btn && !btn.dataset.wired) {
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', async () => {
+        err.textContent = ''; btn.disabled = true; btn.textContent = 'Making your demo restaurant…';
+        try { const d = await api('POST', '/v1/account/demo'); renderDemo({ demo: d, available: true }); }
+        catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = 'Start the browser demo'; }
+      });
+    }
+  }
+
+  async function start() {
+    const view = VIEWS[location.pathname] || 'app';
+    if (view === 'app') return openApp().catch(() => show('login', true));
+    if (view === 'signup') {
+      const s = await api('GET', '/v1/account/status').catch(() => ({ signupOpen: true }));
+      if (!s.signupOpen) $('f-signup').querySelector('[data-err]').textContent = 'Sign-up is not open yet. Please contact us.';
+    }
+    show(view);
+  }
+  window.addEventListener('popstate', start);
+  for (const a of document.querySelectorAll('a[href^="/"]')) a.addEventListener('click', (ev) => { const v = VIEWS[a.getAttribute('href')]; if (!v) return; ev.preventDefault(); history.pushState({}, '', a.getAttribute('href')); start(); });
+  start();
+})();
+</script>
+</body>
+</html>

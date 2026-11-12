@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    // DinePOS Cloud runs this source with Node's type stripping: relative imports end in .ts (rewritten to .js on
+    // build) and only erasable syntax is allowed.
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src"]
+}
