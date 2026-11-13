@@ -352,7 +352,7 @@ channels, payment modes, and a comparison of outlets and of terminals, against t
   `sale_item`, `sale_tender`); a day whose bills changed is added up again on the next read. All of it can be rebuilt
   from `sync_event` (done once on the first start; `hub.analytics.rebuildAll()`).
 - **What a POS should send** with `bill.printed`, besides `billId`, `totalPaise` and `businessDate`: `orderType`
-  (`dine_in`, `takeaway`, `delivery`), `channel` (`pos`, `website`, `app`, `swiggy`, `zomato`), `terminal` (a name),
+  (`dine_in`, `takeaway`, `delivery`, or `counter` for a QSR counter sale), `channel` (`pos`, `website`, `app`, `swiggy`, `zomato`), `terminal` (a name),
   `covers`, `taxPaise`, `discountPaise` and `lines` (`name`, `category`, `qty`, `amountPaise`). All optional: a POS
   build that sends totals only still counts in sales, orders, days, hours and payments. `bill.refunded`
   (`billId` of the credit note, `refundPaise`, `tenders`) takes a refund off.

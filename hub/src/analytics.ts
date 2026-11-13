@@ -19,7 +19,7 @@ import type { SalesSync } from './sync.ts';
  * What a POS sends (sync events, POST /v1/pos/sync/batches). The first five fields are the original contract; the
  * rest were added for analytics and are all optional, so older POS builds keep working (their bills count in sales,
  * orders, days, hours and payments; items, order types and terminals show as "not recorded"):
- *   bill.printed  { billId, billNo, totalPaise, businessDate, orderType: dine_in|takeaway|delivery,
+ *   bill.printed  { billId, billNo, totalPaise, businessDate, orderType: dine_in|takeaway|delivery|counter,
  *                   channel: pos|website|app|swiggy|zomato, terminal, covers, taxPaise, discountPaise,
  *                   lines: [{ name, category, qty, amountPaise }] }
  *   bill.settled  { billId, tenders: [{ mode, amountPaise }], changePaise }
@@ -58,7 +58,7 @@ const IST_MS = 5.5 * 3_600_000;
 const DAY_MS = 86_400_000;
 export const MAX_RANGE_DAYS = 366;
 const CACHE_MS = 30_000;
-const ORDER_TYPES = new Set(['dine_in', 'takeaway', 'delivery']);
+const ORDER_TYPES = new Set(['dine_in', 'takeaway', 'delivery', 'counter']); // counter: a QSR counter sale
 const CHANNELS = new Set(['pos', 'website', 'app', 'swiggy', 'zomato']);
 
 const int = (v: unknown) => (typeof v === 'number' && Number.isSafeInteger(v) ? v : 0);
