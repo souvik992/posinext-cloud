@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { exec, hash, many, one, openHubDb, tx } from './db.ts';
 import { BackupStore } from './backups.ts';
 import { SalesSync } from './sync.ts';
+import { Analytics } from './analytics.ts';
 import type { Db } from './db.ts';
 import { canTransition, label, needsRefund } from '../../contract/src/order.ts';
 import type { OrderFacts, OrderState } from '../../contract/src/order.ts';
@@ -117,6 +118,8 @@ export class Hub {
   backups: BackupStore;
   /** DinePOS outlets: sales sync up, licence renewals down */
   sync: SalesSync;
+  /** the portal's sales analytics, kept up to date from the sales sync (src/analytics.ts) */
+  analytics: Analytics;
   /** P7-01: customer accounts (the portal) */
   accounts: Accounts;
   /** P7-02: licence keys signed by this cloud */
@@ -137,6 +140,7 @@ export class Hub {
     this.bus.setMaxListeners(0);
     this.backups = new BackupStore({ dir: opts.backupDir ?? join(dirname(opts.dbPath), 'backups'), keep: opts.backupKeep, maxBytes: opts.backupMaxBytes, now: this.now });
     this.sync = new SalesSync(this.db, this.now);
+    this.analytics = new Analytics(this.db, this.now, this.sync);
     const log = opts.log ?? { info: () => undefined, warn: () => undefined };
     const signing = opts.licenceSigningKey === undefined ? null : typeof opts.licenceSigningKey === 'string' ? loadSigningKey(opts.licenceSigningKey) : opts.licenceSigningKey;
     this.licences = new Licences(this.db, this.now, this.sync, signing);

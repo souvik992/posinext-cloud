@@ -12,7 +12,7 @@ import type { HostedOutlets } from './hosted.ts';
 import type { Monitor } from './monitor.ts';
 import { randomUUID } from 'node:crypto';
 import { acceptUpgrade, refuseUpgrade } from './ws.ts';
-import { one } from './db.ts';
+import { exec, one } from './db.ts';
 import { Demos } from './demos.ts';
 import { Activations } from './activation.ts';
 import type { ActivateInput } from './activation.ts';
@@ -256,6 +256,9 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('POST', '/v1/account/forgot', (c) => { signupLimit(c.ip); return hub.accounts.forgotPassword((c.body as B)?.email); });
   add('POST', '/v1/account/reset', async (c) => { codeLimit(c.ip); const b = c.body as B; return setSession(c, await hub.accounts.resetPassword(b?.email, b?.code, b?.password, ua(c))); });
   add('POST', '/v1/account/password', (c) => { loginLimit(c.ip); const b = c.body as B; return hub.accounts.changePassword(accountToken(c), b?.current, b?.password); });
+  // sales analytics for the account's own outlets (src/analytics.ts); answers are kept 30 s, so the limit is generous
+  const analyticsLimit = limiter(() => 120);
+  add('GET', '/v1/account/analytics', (c) => { analyticsLimit(c.ip); return hub.analytics.query(hub.accounts.session(accountToken(c)).account_id, c.query); });
   add('GET', '/v1/account/licences', (c) => {
     const user = hub.accounts.session(accountToken(c));
     return { licences: hub.licences.forAccount(user.account_id).map(({ id, product, kind, hardwareId, storeName, licensee, seats, issuedAt, expiresAt, revokedAt, key }) => ({ id, product, kind, hardwareId, outlet: storeName, licensee, seats, issuedAt, expiresAt, revoked: revokedAt !== null, key })) };
@@ -390,6 +393,18 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
       storeId: st.id, accountId: owner?.account_id ?? null, hardwareId: String(b.hardwareId ?? ''), kind: 'manual', days: Number(b.days),
       seats: { terminals: Number(b.terminals ?? 1), captains: Number(b.captains ?? 0), kds: Number(b.kds ?? 0) }, licensee: String(b.licensee ?? st.name), by: 'admin', product,
     });
+  });
+  // which customer account owns a store (its portal then shows the store's sales analytics). A store made by a trial
+  // activation is linked by itself; a store made on the admin page is linked here by a sign-in email of the account.
+  add('PUT', '/v1/admin/stores/:slug/account', (c) => {
+    admin(c);
+    const st = hub.store({ slug: c.params.slug! });
+    const email = String((c.body as { email?: unknown } | null)?.email ?? '').trim().toLowerCase();
+    if (!email) { exec(hub.db, 'DELETE FROM account_store WHERE store_id = ?', st.id); return { store: st.slug, account: null }; }
+    const acc = one<{ id: string; name: string }>(hub.db, 'SELECT a.id, a.name FROM account_user u JOIN account a ON a.id = u.account_id WHERE u.email = ?', email);
+    if (!acc) throw new HubError('NOT_FOUND', 'No customer account signs in with that email.', 404);
+    exec(hub.db, 'INSERT INTO account_store (store_id, account_id, added_at) VALUES (?,?,?) ON CONFLICT (store_id) DO UPDATE SET account_id = excluded.account_id, added_at = excluded.added_at', st.id, acc.id, hub.now());
+    return { store: st.slug, account: acc.name };
   });
   add('POST', '/v1/admin/grants/:id/revoke', (c) => { admin(c); return hub.licences.revoke(c.params.id!, (c.body as { reason?: unknown } | null)?.reason); });
   add('POST', '/v1/admin/stores/:slug/site-password', (c) => { admin(c); return hub.newSitePassword(c.params.slug!); });

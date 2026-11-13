@@ -53,6 +53,8 @@ function describeKey(key: string): { licensee: string | null; expiresAt: string 
 
 export class SalesSync {
   private db: Db; private now: () => number;
+  /** Called for each newly stored event, inside the transaction that stores it (src/analytics.ts keeps its tables here). */
+  onStored: ((storeId: string, kind: string, payload: unknown, createdAt: string) => void) | null = null;
   constructor(db: Db, now: () => number) { this.db = db; this.now = now; }
 
   /** POST /v1/pos/sync/batches: stores the batch (or finds it already stored) and returns the highest seq held. */
@@ -79,6 +81,7 @@ export class SalesSync {
         const day = p && typeof p === 'object' && typeof p.businessDate === 'string' && DATE.test(p.businessDate) ? p.businessDate : null;
         exec(this.db, 'INSERT INTO sync_event (store_id, stream_id, seq, kind, payload_json, payload_hash, business_date, created_at, received_at) VALUES (?,?,?,?,?,?,?,?,?)',
           dev.storeId, b.streamId, e.seq, e.kind, text, h, day, e.createdAt, this.now());
+        this.onStored?.(dev.storeId, e.kind, e.payload, e.createdAt);
         stored++;
       }
       const ack = Math.max(s.ack_seq, b.events[b.events.length - 1]!.seq);

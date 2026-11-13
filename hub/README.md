@@ -189,6 +189,7 @@ Sign up (business name, your name, email, mobile, password) → a 6-digit code b
 | `POST /v1/account/reset` | `{email, code, password}` → sets the cookie, ends other sign-ins |
 | `POST /v1/account/login` · `/logout` | `{email, password}`; 403 `EMAIL_NOT_VERIFIED` (a new code is sent) |
 | `GET /v1/account/me` | `{user, account, stores}` |
+| `GET /v1/account/analytics` | sales analytics for the account's outlets (see "Sales analytics for the portal") |
 | `POST /v1/account/password` | `{current, password}` |
 | `GET /v1/account/status` | `{signupOpen}` |
 | `GET /v1/admin/accounts` (admin key) | the newest 500 accounts |
@@ -336,6 +337,27 @@ renewals (`src/sync.ts`). Neither side needs the other to work: the outlet bills
 
 Each outlet database is its own stream (`streamId`), so a reinstalled or restored POS never overwrites what an earlier
 one sent; the sales view counts each bill and each business day once. The admin store page shows both.
+
+## Sales analytics for the portal
+
+The portal's **Analytics** page (`GET /v1/account/analytics?from=&to=&brand=&store=&terminal=`, signed in; `src/analytics.ts`)
+shows an account its own outlets: sales, orders, average bill, daily sales, peak hours, top items, order types, sales
+channels, payment modes, and a comparison of outlets and of terminals, against the period before.
+
+- **Whose outlets:** the stores linked to the account (`account_store`). A trial activation links its store by itself.
+  A store made on the admin page is linked with `PUT /v1/admin/stores/<slug>/account` `{ "email": "<a sign-in email of
+  the account>" }` (admin key; an empty email removes the link). Brands are the brands of the admin page (**Brands**).
+- **Where the figures come from:** the sales sync above. Each stored `bill.*` event updates one row per bill
+  (`sale_bill`) in the same transaction. The page reads only small totals per outlet and business day (`sale_slice`,
+  `sale_item`, `sale_tender`); a day whose bills changed is added up again on the next read. All of it can be rebuilt
+  from `sync_event` (done once on the first start; `hub.analytics.rebuildAll()`).
+- **What a POS should send** with `bill.printed`, besides `billId`, `totalPaise` and `businessDate`: `orderType`
+  (`dine_in`, `takeaway`, `delivery`), `channel` (`pos`, `website`, `app`, `swiggy`, `zomato`), `terminal` (a name),
+  `covers`, `taxPaise`, `discountPaise` and `lines` (`name`, `category`, `qty`, `amountPaise`). All optional: a POS
+  build that sends totals only still counts in sales, orders, days, hours and payments. `bill.refunded`
+  (`billId` of the credit note, `refundPaise`, `tenders`) takes a refund off.
+- Answers are kept for 30 seconds per account and filter; 120 requests a minute per address; at most 366 days.
+- Sales are bill totals with taxes, by business date; hours are India time.
 
 ## Swiggy and Zomato (through UrbanPiper)
 
