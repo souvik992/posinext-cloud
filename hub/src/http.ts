@@ -259,6 +259,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   // sales analytics for the account's own outlets (src/analytics.ts); answers are kept 30 s, so the limit is generous
   const analyticsLimit = limiter(() => 120);
   add('GET', '/v1/account/analytics', (c) => { analyticsLimit(c.ip); return hub.analytics.query(hub.accounts.session(accountToken(c)).account_id, c.query); });
+  add('GET', '/v1/account/inventory', (c) => { analyticsLimit(c.ip); return hub.inventory.query(hub.accounts.session(accountToken(c)).account_id, c.query); });
   add('GET', '/v1/account/licences', (c) => {
     const user = hub.accounts.session(accountToken(c));
     return { licences: hub.licences.forAccount(user.account_id).map(({ id, product, kind, hardwareId, storeName, licensee, seats, issuedAt, expiresAt, revokedAt, key }) => ({ id, product, kind, hardwareId, outlet: storeName, licensee, seats, issuedAt, expiresAt, revoked: revokedAt !== null, key })) };
@@ -442,6 +443,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('GET', '/v1/pos/orders', (c) => hub.openOrders(device(c)));
   add('POST', '/v1/pos/sync/batches', (c) => hub.sync.receive(device(c), c.body), { maxBody: 4 * 1024 * 1024 }); // DinePOS sales sync
   add('GET', '/v1/pos/licence', (c) => hub.sync.licence(device(c)));
+  add('PUT', '/v1/pos/inventory', (c) => hub.inventory.putStock(device(c), c.body), { maxBody: 2 * 1024 * 1024 }); // the outlet's stock list as it is now
   add('GET', '/v1/pos/images', (c) => ({ names: hub.imageNames(device(c)) }));
   add('PUT', '/v1/pos/images/:name', (c) => hub.putImage(device(c), c.params.name!, (c.body as { dataBase64?: unknown } | null)?.dataBase64), { maxBody: 2_100_000 });
   add('POST', '/v1/pos/orders/:id/platform-action', (c) => up.platformAction(device(c), c.params.id!, c.body, idem(c))); // Swiggy / Zomato requests

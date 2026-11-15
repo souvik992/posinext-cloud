@@ -359,6 +359,23 @@ channels, payment modes, and a comparison of outlets and of terminals, against t
 - Answers are kept for 30 seconds per account and filter; 120 requests a minute per address; at most 366 days.
 - Sales are bill totals with taxes, by business date; hours are India time.
 
+## Purchases and stock for the portal
+
+The portal's **Purchases & stock** page (`GET /v1/account/inventory?from=&to=&brand=&store=`, signed in;
+`src/inventory.ts`) is view only: purchases, counts and recipes are entered in the POS at each outlet.
+
+- **Purchases** are facts that never change, so they travel in the sales sync stream: `purchase.recorded`
+  (`purchaseId`, `supplier`, `billNo`, `businessDate`, `totalPaise`, `lines` of `name`, `unit`, `qtyMilli`,
+  `amountPaise`) and `purchase.voided` (`purchaseId`). `inv_purchase` holds one row per purchase and can be rebuilt
+  from `sync_event` (`hub.inventory.rebuildPurchases()`; done once on the first start).
+- **Stock on hand** is a state: the POS sends the whole list when it changed, `PUT /v1/pos/inventory` (device key)
+  `{ at, items: [{ id, name, unit, onHandMilli, reorderMilli, unitCostPaise }], usage: [{ date, usedPaise, wastePaise }] }`.
+  The latest list replaces the one before; an older one arriving late is ignored; sending it twice does no harm.
+  `usage` is what each day's sales used and what was wasted, valued by the POS at each material's last cost.
+- The page shows stock value, materials at or under their reorder level, purchases by day, supplier and material,
+  food cost (used / sales in the same dates, an estimate), stock by outlet, one outlet's whole list and recent purchases.
+- The same limits as analytics: answers kept 30 seconds, 120 requests a minute, at most 366 days.
+
 ## Swiggy and Zomato (through UrbanPiper)
 
 Orders from Swiggy and Zomato come through UrbanPiper (`src/urbanpiper.ts`; their guide: https://api-docs.urbanpiper.com/downstream).

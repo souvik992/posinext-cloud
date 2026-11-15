@@ -94,8 +94,16 @@ interface BillRow {
   bill_id: string; kind: string; at: number; total: number; voided: number; terminal: string | null; order_type: string | null; channel: string | null;
   tax: number | null; discount: number | null; covers: number | null; lines_json: string | null; tenders_json: string | null; change: number;
 }
-interface ScopeStore { id: string; slug: string; name: string; product: string | null; brand: string | null; brandName: string | null; lastSyncAt: number | null }
+export interface ScopeStore { id: string; slug: string; name: string; product: string | null; brand: string | null; brandName: string | null; lastSyncAt: number | null }
 interface Totals { sales: number; orders: number; avgTicket: number; tax: number; discount: number; covers: number; voids: number; voidAmount: number; refunds: number; refundAmount: number }
+
+/** An account's outlets with their brand (a store is in one brand at most) and when each last sent sales. */
+export function accountStores(db: Db, accountId: string): ScopeStore[] {
+  return many<ScopeStore>(db, `SELECT s.id, s.slug, s.name, s.pos_type AS product, b.slug AS brand, b.name AS brandName,
+      (SELECT max(last_at) FROM sync_stream WHERE store_id = s.id) AS lastSyncAt
+    FROM account_store x JOIN store s ON s.id = x.store_id LEFT JOIN brand_store bs ON bs.store_id = s.id LEFT JOIN brand b ON b.id = bs.brand_id
+    WHERE x.account_id = ? ORDER BY s.name, s.slug`, accountId);
+}
 
 export class Analytics {
   private db: Db; private now: () => number;
@@ -202,12 +210,15 @@ export class Analytics {
     });
   }
 
-  /** The account's outlets with their brand (a store is in one brand at most) and when each last sent sales. */
+  /** Sales of these stores in these business dates (for the inventory page's food cost). */
+  salesTotal(storeIds: string[], from: string, to: string): number {
+    const marks = storeIds.map(() => '?').join(',');
+    for (const d of many<{ store_id: string; business_date: string }>(this.db, `SELECT store_id, business_date FROM sale_dirty WHERE store_id IN (${marks}) AND business_date BETWEEN ? AND ?`, ...storeIds, from, to)) this.rebuildDay(d.store_id, d.business_date);
+    return one<{ n: number }>(this.db, `SELECT COALESCE(sum(sales),0) AS n FROM sale_slice WHERE store_id IN (${marks}) AND business_date BETWEEN ? AND ?`, ...storeIds, from, to)!.n;
+  }
+
   private scope(accountId: string): ScopeStore[] {
-    return many<ScopeStore>(this.db, `SELECT s.id, s.slug, s.name, s.pos_type AS product, b.slug AS brand, b.name AS brandName,
-        (SELECT max(last_at) FROM sync_stream WHERE store_id = s.id) AS lastSyncAt
-      FROM account_store x JOIN store s ON s.id = x.store_id LEFT JOIN brand_store bs ON bs.store_id = s.id LEFT JOIN brand b ON b.id = bs.brand_id
-      WHERE x.account_id = ? ORDER BY s.name, s.slug`, accountId);
+    return accountStores(this.db, accountId);
   }
 
   /**
