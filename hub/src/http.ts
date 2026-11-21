@@ -603,6 +603,8 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   });
 
   /** The address devices use for this outlet, and whether its tunnel is up. */
+  /** The store this POS is connected to (the ODS add-on shows its name; a POS linked by its account licence has no pairing answer). */
+  add('GET', '/v1/pos/store', (c) => { const s = hub.store({ id: device(c).storeId }); return { slug: s.slug, name: s.name }; });
   add('GET', '/v1/pos/tunnel-info', (c) => {
     const dev = device(c);
     return { deviceUrl: deviceDomain ? `${deviceScheme}//${dev.slug}.${deviceDomain}` : null, connected: tunnels.online(dev.storeId) };

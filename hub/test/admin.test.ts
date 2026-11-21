@@ -28,6 +28,15 @@ test('hub admin: the admin page is served without secrets; every admin call need
   } finally { await h.close(); cleanup(h.dir); }
 });
 
+test('a connected POS can ask which store it is connected to (the ODS add-on shows the name)', async () => {
+  const h = await startHub();
+  try {
+    const { key } = await pairedStore(h);
+    assert.deepEqual((await h.call('GET', '/v1/pos/store', { key })).json, { slug: 'demo-burger', name: 'Demo Burger Hub' });
+    assert.equal((await h.call('GET', '/v1/pos/store', { key: 'tpk_wrong' })).status, 401);
+  } finally { await h.close(); cleanup(h.dir); }
+});
+
 test('hub admin: the overview shows each store, its POS devices, whether it is online and taking orders, and recent orders with masked mobiles', async () => {
   const h = await startHub();
   try {
