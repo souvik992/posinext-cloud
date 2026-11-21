@@ -338,6 +338,14 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
 
   // ---- P8-08: support tickets, announcements, knowledge base, service status (src/support.ts)
   const support = new Support(hub, o.supportNotifyTo, o.log);
+  const inboxView = () => ({ source: support.serverInbox ? 'server' : support.notifyTo ? 'admin' : 'none', to: support.notifyTo ?? '' });
+  add('GET', '/v1/admin/support-inbox', (c) => { admin(c); return inboxView(); });
+  add('PUT', '/v1/admin/support-inbox', (c) => {
+    admin(c);
+    if (support.serverInbox) throw new HubError('SET_ON_SERVER', 'The support inbox is set on the server (HUB_SUPPORT_NOTIFY_TO in /etc/posinext-cloud.env): change it there.', 409);
+    hub.saveSupportInbox((c.body as { to?: unknown } | null)?.to);
+    return inboxView();
+  });
   const ticketLimit = limiter(() => 10);
   add('GET', '/v1/account/tickets', (c) => ({ tickets: support.mine(accountToken(c)) }));
   add('POST', '/v1/account/tickets', (c) => { ticketLimit(c.ip); return support.open(accountToken(c), c.body); });
@@ -411,6 +419,12 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('PUT', '/v1/admin/sms', (c) => { admin(c); return hub.saveSmsSetup(c.body); });
   add('DELETE', '/v1/admin/sms', (c) => { admin(c); return hub.removeSmsSetup(); });
   add('POST', '/v1/admin/sms/test', (c) => { admin(c); return hub.testSms((c.body as { mobile?: unknown } | null)?.mobile); });
+  add('GET', '/v1/admin/mail', (c) => { admin(c); return hub.mailSetup(); });
+  add('PUT', '/v1/admin/mail', (c) => { admin(c); return hub.saveMailSetup(c.body); });
+  add('DELETE', '/v1/admin/mail', (c) => { admin(c); return hub.removeMailSetup(); });
+  add('POST', '/v1/admin/mail/test', (c) => { admin(c); const b = c.body as { to?: unknown; template?: unknown } | null; return hub.testMail(b?.to, b?.template); });
+  add('GET', '/v1/admin/mail-templates', (c) => { admin(c); return hub.mailTemplatesView(); });
+  add('PUT', '/v1/admin/mail-templates', (c) => { admin(c); return hub.saveMailTemplates(c.body); });
   add('PUT', '/v1/admin/stores/:slug/pause', (c) => { admin(c); const b = (c.body ?? {}) as { paused?: unknown; reason?: unknown }; return hub.pauseStore(c.params.slug!, b.paused === true, b.reason); });
   add('GET', '/v1/admin/stores/:slug/sales', (c) => { admin(c); return hub.sync.sales(hub.store({ slug: c.params.slug! }).id, Number(c.query.get('days') ?? 14)); });
   add('GET', '/v1/admin/stores/:slug/licence', (c) => { admin(c); return hub.sync.licenceInfo(hub.store({ slug: c.params.slug! }).id); });

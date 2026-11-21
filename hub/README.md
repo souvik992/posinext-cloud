@@ -230,7 +230,21 @@ and optionally `HUB_MAIL_FROM_NAME` in `/etc/posinext-cloud.env`. Without them, 
 **Email without Brevo: a mailbox's SMTP server** (e.g. Zoho Mail for `support@posinext.com`). In
 `/etc/posinext-cloud.env` set `HUB_SMTP_HOST=smtppro.zoho.in`, `HUB_SMTP_USER=support@posinext.com`,
 `HUB_SMTP_PASS=<Zoho app password>` and `HUB_MAIL_FROM_NAME=POSINEXT` (port 465 with TLS; `HUB_SMTP_PORT` changes it;
-the sender is `HUB_MAIL_FROM`, default the user). Brevo is used instead when its settings are there.
+the sender is `HUB_MAIL_FROM`, default the user). Port 587 uses STARTTLS (Gmail, Microsoft 365); `HUB_SMTP_SECURITY=tls`
+or `starttls` sets it. Brevo is used instead when its settings are there.
+
+**Email from the admin page** (Hub settings > Email (SMTP)): when none of the settings above are in
+`/etc/posinext-cloud.env`, the mail server, port, security (SSL/TLS or STARTTLS), user, password, from address and name
+can be saved on the admin page instead (setting `mail`; the password stays in the hub database and its backups, and only
+its last 4 characters are shown). It is used at once, opens sign-up, and has a "Send test email". It cannot be removed
+while Email verification (Security checks) is on. Routes: `GET/PUT/DELETE /v1/admin/mail`, `POST /v1/admin/mail/test`
+`{to, template?}`.
+
+**Email templates** (Hub settings > Email templates, `src/mail-templates.ts`): the subject and text of the emails
+customers get — the email verification code, the password reset code and the support ticket answer — with `{{code}}`,
+`{{minutes}}`, `{{reply}}`, `{{staffName}}`, `{{ticketNumber}}` and `{{ticketSubject}}` filled in when sent. Each is sent as a designed HTML email (a default PosiNext design, editable, with a live preview) with the plain text alongside (multipart/alternative), or as plain text only. In the HTML, filled-in values are escaped.
+The code emails must keep `{{code}}` and the ticket answer `{{reply}}`. Only changed templates are saved (setting
+`mailTemplates`); "Reset to default" puts one back. Routes: `GET/PUT /v1/admin/mail-templates`.
 
 ## Licence keys signed by the cloud (P7-02)
 
@@ -307,7 +321,8 @@ Moving portal.posinext.com from Lovable to this server (once):
 1. Merge saas-portal's portal into main, so its CI publishes the first `portal-build`.
 2. On the server, once: `sudo bash /opt/posinext-cloud/hub/deploy/install.sh` (installs the new update script); later
    updates are `sudo posinext-cloud-update`.
-3. Email must work for sign-up codes: `HUB_BREVO_API_KEY` and `HUB_MAIL_FROM` in `/etc/posinext-cloud.env`.
+3. Email must work for sign-up codes: `HUB_BREVO_API_KEY` and `HUB_MAIL_FROM` in `/etc/posinext-cloud.env`, or a
+   mailbox set up on the admin page (Hub settings > Email (SMTP)).
 4. Cloudflare DNS for posinext.com: replace the `portal` record (Lovable's) with an **A** record to this server's IP,
    **DNS only** (grey cloud) so Caddy can get the certificate. Remove the custom domain from the Lovable project.
 5. In `/etc/posinext-cloud.env` set `HUB_PORTAL_DOMAIN=portal.posinext.com`, then `sudo posinext-cloud-domain`.
@@ -323,7 +338,10 @@ The portal (souvik992/saas-portal `cloud/saas-web`; ADR-0007) reads all of this 
   answer first; an answer is emailed to the customer who opened the ticket (`/v1/admin/tickets...`). Set
   `HUB_SUPPORT_NOTIFY_TO=support@posinext.com` in `/etc/posinext-cloud.env` (needs Brevo or SMTP email) and each new
   ticket and each customer reply is emailed there too; replying to that email goes to the customer by email only, so
-  answer on the admin page for it to show in the portal.
+  answer on the admin page for it to show in the portal. The support inbox can instead be set on the admin page
+  (Hub settings › Email (SMTP) › Support inbox, setting `supportInbox`, `GET/PUT /v1/admin/support-inbox`); the server
+  setting wins. All support email goes through the email set up there or on the server. When an inbox is set, the
+  answer email to the customer has it as Reply-To, so a customer's email reply reaches support.
 - Announcements: `GET /v1/announcements` (`?product=`), written on the admin page (`/v1/admin/announcements`).
 - Knowledge base: `GET /v1/kb`, `GET /v1/kb/<slug>` (plain text; blank lines make paragraphs), written on the admin page.
 - `GET /v1/status`: sign-in, licence activation, downloads published, online orders relay.
