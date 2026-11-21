@@ -94,7 +94,7 @@ test('activation: each product has its own trial; keys say their product; a Tiff
     // a second Tiffin trial is refused, naming the product
     const again = await activate(h, { ...a, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW2 });
     assert.deepEqual([again.status, again.json.error.code], [409, 'TRIAL_USED']);
-    assert.match(again.json.error.message, /free Tiffin POS trial/);
+    assert.match(again.json.error.message, /free quickPOS trial/);
     // an unknown product is refused before anything is claimed
     assert.equal((await activate(h, { ...a, mode: 'trial', product: 'pizza_pos' })).status, 400);
     const claims = h.hub.db.prepare('SELECT product, COUNT(*) AS n FROM trial_claim GROUP BY product ORDER BY product').all();

@@ -11,13 +11,13 @@ export interface ProductInfo {
   name: string;
   /** The Windows app. */
   app: string;
-  /** Seats in a trial key. Every key carries all three kinds (the DinePOS app needs them; Tiffin POS reads terminals). */
+  /** Seats in a trial key. Every key carries all three kinds (the DinePOS app needs them; quickPOS reads terminals). */
   trialSeats: { terminals: number; captains: number; kds: number };
 }
 
 export const PRODUCTS: Record<ProductCode, ProductInfo> = {
   fine_dine: { code: 'fine_dine', name: 'Fine Dine', app: 'DinePOS', trialSeats: { terminals: 1, captains: 1, kds: 1 } },
-  tiffin_qsr: { code: 'tiffin_qsr', name: 'QSR', app: 'Tiffin POS', trialSeats: { terminals: 1, captains: 0, kds: 1 } },
+  tiffin_qsr: { code: 'tiffin_qsr', name: 'QSR', app: 'quickPOS', trialSeats: { terminals: 1, captains: 0, kds: 1 } },
   grocery: { code: 'grocery', name: 'Grocery', app: 'PosiNext Grocery', trialSeats: { terminals: 1, captains: 0, kds: 0 } },
   apparel: { code: 'apparel', name: 'Apparel', app: 'PosiNext Apparel', trialSeats: { terminals: 1, captains: 0, kds: 0 } },
   pharmacy: { code: 'pharmacy', name: 'Pharmacy', app: 'PosiNext Pharmacy', trialSeats: { terminals: 1, captains: 0, kds: 0 } },

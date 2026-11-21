@@ -437,7 +437,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
     const st = hub.store({ slug: c.params.slug! });
     const b = (c.body ?? {}) as { hardwareId?: unknown; days?: unknown; terminals?: unknown; captains?: unknown; kds?: unknown; licensee?: unknown; product?: unknown };
     const product = productOf(b.product);
-    if (!product) throw new HubError('VALIDATION', 'Choose the product: fine_dine (DinePOS), tiffin_qsr (Tiffin POS), grocery, apparel or pharmacy (PosiNext).', 400, { fields: { product: 'Unknown product.' } });
+    if (!product) throw new HubError('VALIDATION', 'Choose the product: fine_dine (DinePOS), tiffin_qsr (quickPOS), grocery, apparel or pharmacy (PosiNext).', 400, { fields: { product: 'Unknown product.' } });
     const owner = one<{ account_id: string }>(hub.db, 'SELECT account_id FROM account_store WHERE store_id = ?', st.id);
     return hub.licences.issue({
       storeId: st.id, accountId: owner?.account_id ?? null, hardwareId: String(b.hardwareId ?? ''), kind: 'manual', days: Number(b.days),

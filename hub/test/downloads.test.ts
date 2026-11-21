@@ -193,6 +193,14 @@ test('P8-11: the newest 3 versions are kept; deleting the newest offers the one 
     assert.equal((await upload(h, 'tiffin-ods', 'TiffinPOS-ODS-Setup-1.0.1.exe', again)).status, 200);
     assert.equal(await version(), '1.0.1');
     assert.ok(readFileSync(join(files, 'tiffin-ods', 'TiffinPOS-ODS-Setup-1.0.1.exe')).equals(again));
+    // Tiffin POS was renamed quickPOS (POS 0.3.15, ODS 1.0.15): both file names are accepted, the newest upload is offered
+    h.clock.t += 60_000;
+    assert.equal((await upload(h, 'tiffin-ods', 'quickPOS-ODS-Setup-1.0.15.exe', randomBytes(1000))).status, 200);
+    assert.equal(await version(), '1.0.15');
+    assert.equal((await upload(h, 'tiffin', 'quickPOS-Setup-0.3.15.exe', randomBytes(1000))).status, 200);
+    assert.equal((await upload(h, 'tiffin', 'quickPOS-ODS-Setup-0.3.15.exe', randomBytes(1000))).status, 400, 'the add-on is not the POS');
+    const pos = ((await h.call('GET', '/v1/downloads')).json.downloads as Array<{ id: string; version: string; name: string; fileName: string }>).find((d) => d.id === 'tiffin')!;
+    assert.deepEqual([pos.name, pos.version, pos.fileName], ['quickPOS for Windows', '0.3.15', 'quickPOS-Setup-0.3.15.exe']);
   } finally { await h.close(); cleanup(h.dir); cleanup(files); }
 });
 
