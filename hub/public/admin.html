@@ -914,6 +914,7 @@
     { key: 'otp', label: 'OTP (sign in with an SMS code)', hint: 'Website: "Sign in with a code" for accounts with a confirmed mobile. Ordering: the customer confirms their mobile with a code before a cash-on-delivery order.', applies: CHANNELS, sms: true },
     { key: 'emailVerification', label: 'Email verification', hint: 'A new account confirms its email with a code before it can sign in.', applies: ['portal'] },
     { key: 'mobileVerification', label: 'Mobile number verification', hint: "The account's mobile is confirmed with an SMS code before its first sign-in on the website (existing accounts too, at their next sign-in).", applies: ['portal'], sms: true },
+    { key: 'demoMode', label: 'Demo mode', hint: 'The OTP code is shown on screen, so anyone can order without a phone (demos, testing). Customers\' mobiles are then not really checked: keep it off for real stores.', applies: ['orderingApp', 'orderingSite'] },
   ];
   $('checksForm').addEventListener('change', () => { checksDirty = true; $('checksSaved').textContent = ''; });
   function fillChecks() {

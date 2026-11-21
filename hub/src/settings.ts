@@ -1,8 +1,9 @@
 /**
  * Hub settings the admin page can change while the hub runs. Saved in the hub database (table `setting`); a setting
  * never saved uses its default (from the environment where one exists, e.g. HUB_ROUTING_URL).
- * Not here on purpose: HUB_DEV_OTP and HUB_ONLINE_PAYMENTS. Showing OTP codes would let anyone with the admin key skip
- * mobile checks, and online payment needs a payment gateway; both stay environment-only.
+ * Not here on purpose: HUB_ONLINE_PAYMENTS (online payment needs a payment gateway). HUB_DEV_OTP (OTP codes shown on
+ * screen everywhere) stays environment-only; per ordering channel the admin can switch on demo mode (below), which
+ * shows that channel's OTP codes on screen: with it on, a customer's mobile is not really checked.
  */
 
 /**
@@ -16,15 +17,17 @@
  *                     the customer confirms their mobile with a code before a cash-on-delivery order
  * emailVerification   portal: a new account confirms its email with a code (every customer account, on any address)
  * mobileVerification  portal: the account's mobile number is confirmed with an SMS code before the first sign-in
+ * demoMode            ordering: the OTP code is shown on screen (in the /v1/otp/send answer, `devCode`) as with
+ *                     HUB_DEV_OTP, so demos and testers can order without a phone. Not a check: it weakens the OTP
  */
 export const CHANNELS = ['portal', 'orderingApp', 'orderingSite'] as const;
 export type Channel = typeof CHANNELS[number];
-export const CHECKS = ['captcha', 'otp', 'emailVerification', 'mobileVerification'] as const;
+export const CHECKS = ['captcha', 'otp', 'emailVerification', 'mobileVerification', 'demoMode'] as const;
 export type Check = typeof CHECKS[number];
 export type Checks = Record<Check, Record<Channel, boolean>>;
 /** Where each check means something; the other boxes are always off. */
 export const CHECK_CHANNELS: Record<Check, readonly Channel[]> = {
-  captcha: CHANNELS, otp: CHANNELS, emailVerification: ['portal'], mobileVerification: ['portal'],
+  captcha: CHANNELS, otp: CHANNELS, emailVerification: ['portal'], mobileVerification: ['portal'], demoMode: ['orderingApp', 'orderingSite'],
 };
 /** Checks that send an SMS: they need an SMS provider (or HUB_DEV_OTP) before they can be switched on. */
 export const SMS_CHECKS: ReadonlyArray<[Check, Channel]> = [['otp', 'portal'], ['mobileVerification', 'portal']];
@@ -34,6 +37,7 @@ const DEFAULT_CHECKS: Checks = {
   otp: { portal: false, orderingApp: true, orderingSite: true }, // ordering: cash on delivery needed the code before
   emailVerification: { portal: true, orderingApp: false, orderingSite: false },
   mobileVerification: { portal: false, orderingApp: false, orderingSite: false },
+  demoMode: { portal: false, orderingApp: false, orderingSite: false },
 };
 
 /** A full set of checks: missing boxes from `base`, boxes that do not apply always off. */

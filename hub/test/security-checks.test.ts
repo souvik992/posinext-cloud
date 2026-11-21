@@ -27,6 +27,7 @@ test('checks: defaults keep today\'s behaviour; partial changes merge; boxes tha
       otp: { portal: false, orderingApp: true, orderingSite: true },
       emailVerification: { portal: true, orderingApp: false, orderingSite: false },
       mobileVerification: { portal: false, orderingApp: false, orderingSite: false },
+      demoMode: { portal: false, orderingApp: false, orderingSite: false },
     });
     const r = await setChecks(h, { captcha: { orderingApp: true }, otp: { orderingSite: false } });
     assert.equal(r.status, 200, JSON.stringify(r.json));
@@ -40,7 +41,7 @@ test('checks: defaults keep today\'s behaviour; partial changes merge; boxes tha
     assert.deepEqual(Object.keys(bad.json.error.details.fields).sort(), ['checks.captcha.kiosk', 'checks.captcha.portal', 'checks.emailVerification.orderingApp', 'checks.nope']);
 
     // what each channel asks for (public, for the apps and pages)
-    assert.deepEqual((await h.call('GET', '/v1/checks?channel=app')).json, { channel: 'orderingApp', captcha: true, otp: true, emailVerification: false, mobileVerification: false });
+    assert.deepEqual((await h.call('GET', '/v1/checks?channel=app')).json, { channel: 'orderingApp', captcha: true, otp: true, emailVerification: false, mobileVerification: false, demoMode: false });
     assert.equal((await h.call('GET', '/v1/checks?channel=website')).json.otp, false);
     // kept across a restart
     const h2 = await h.restart();
@@ -89,7 +90,7 @@ test('ordering: OTP and captcha follow the boxes for the app and the website sep
 
     // OTP off for the website only
     await setChecks(h, { otp: { orderingSite: false } });
-    assert.deepEqual((await h.call('GET', '/v1/stores/demo-burger')).json.checks, { otp: false, captcha: false });
+    assert.deepEqual((await h.call('GET', '/v1/stores/demo-burger')).json.checks, { otp: false, captcha: false, demoMode: false });
     assert.equal((await order(h, 'website')).status, 201);
     assert.equal((await order(h, 'app')).json.error.code, 'OTP_REQUIRED');
 
@@ -215,4 +216,19 @@ test('MSG91: one flow template, the code in its variable, numbers with the count
   await assert.rejects(send('9876543210', 'x', '111111'), /Invalid template/);
   answer = { status: 401, body: 'unauthorised' };
   await assert.rejects(send('9876543210', 'x', '111111'), /401/);
+});
+
+test('demo mode: per ordering channel, the OTP code is shown on screen (as HUB_DEV_OTP); off by default', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hub-demo-'));
+  const sent: string[] = [];
+  const hub = new Hub({ dbPath: join(dir, 'hub.db'), sendSms: async (_m, _t, code) => { sent.push(code); } });
+  try {
+    assert.equal((await hub.otpSend('9876543210', { channel: 'website' })).devCode, undefined);
+    hub.saveSettings({ checks: { demoMode: { orderingSite: true } } });
+    const site = await hub.otpSend('9876543210', { channel: 'website' });
+    assert.equal(site.devCode, sent.at(-1), 'the code on screen is the one sent');
+    assert.equal((await hub.otpSend('9876543211', { channel: 'app' })).devCode, undefined, 'the app is a separate box');
+    assert.equal(hub.checksFor('orderingSite').demoMode, true);
+    assert.throws(() => hub.saveSettings({ checks: { demoMode: { portal: true } } }), { code: 'VALIDATION' });
+  } finally { hub.close(); cleanup(dir); }
 });

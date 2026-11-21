@@ -546,7 +546,7 @@ export class Hub {
   /** What a channel asks for (GET /v1/checks), so an app or page shows the right steps. */
   checksFor(channel: Channel) {
     const c = this.settings().checks;
-    return { channel, captcha: c.captcha[channel], otp: c.otp[channel], emailVerification: c.emailVerification[channel], mobileVerification: c.mobileVerification[channel] };
+    return { channel, captcha: c.captcha[channel], otp: c.otp[channel], emailVerification: c.emailVerification[channel], mobileVerification: c.mobileVerification[channel], demoMode: c.demoMode[channel] };
   }
 
   /** The store page for customer apps. */
@@ -565,7 +565,7 @@ export class Hub {
       delivery: { location: sv.location ? { lat: sv.location.lat, lng: sv.location.lng } : null, zones: sv.zones, packagingFee: sv.packagingFee },
       pickup: sv.pickup, hours: sv.hours, acceptMode: m.options.acceptMode,
       // the security checks for this channel: otp (cash on delivery needs a confirmed mobile), captcha
-      checks: { otp: this.checksFor(orderingChannel(channel)).otp, captcha: this.checksFor(orderingChannel(channel)).captcha },
+      checks: (({ otp, captcha, demoMode }) => ({ otp, captcha, demoMode }))(this.checksFor(orderingChannel(channel))),
     };
   }
 
@@ -601,7 +601,8 @@ export class Hub {
   /** An order OTP by SMS. With the captcha on for the channel ("app" | "website"), its answer is checked first. */
   async otpSend(mobileIn: string, o: { channel?: unknown; captchaId?: unknown; captcha?: unknown } = {}) {
     const ch = orderingChannel(o.channel === 'app' ? 'app' : 'website');
-    if (this.settings().checks.captcha[ch]) this.captchas.check(o.captchaId, o.captcha);
+    const checks = this.settings().checks;
+    if (checks.captcha[ch]) this.captchas.check(o.captchaId, o.captcha);
     const mobile = normaliseMobile(String(mobileIn ?? ''));
     if (!MOBILE_RE.test(mobile)) throw new HubError('VALIDATION', 'Enter a 10-digit mobile number.');
     const now = this.now();
@@ -614,7 +615,8 @@ export class Hub {
         sends = CASE WHEN ? THEN otp.sends + 1 ELSE 1 END, window_start = CASE WHEN ? THEN otp.window_start ELSE excluded.window_start END`,
       mobile, hash(mobile + code), now + OTP_TTL, now, inWindow ? 1 : 0, inWindow ? 1 : 0);
     await (this.opts.sendSms ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`, code);
-    return { sent: true, ...(this.opts.devOtp ? { devCode: code } : {}) };
+    // demo mode (per channel, admin page) or HUB_DEV_OTP: the code is shown on screen
+    return { sent: true, ...(this.opts.devOtp || checks.demoMode[ch] ? { devCode: code } : {}) };
   }
 
   otpVerify(mobileIn: string, code: string) {

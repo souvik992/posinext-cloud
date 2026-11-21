@@ -194,13 +194,14 @@ with `channel: "app"` / `"website"`). Saved in the hub database (setting `checks
 | OTP | "Sign in with a code": an SMS code to the account's confirmed mobile signs the owner in | cash on delivery needs a mobile confirmed by an SMS code (on by default, as before) |
 | Email verification | a new account confirms its email (on by default; every customer account, on any address) | - |
 | Mobile number verification | the account's mobile is confirmed by an SMS code before its first sign-in (existing accounts at their next sign-in) | - |
+| Demo mode | - | the OTP code is shown on screen (`devCode` in the `/v1/otp/send` answer), as `HUB_DEV_OTP` does everywhere; off by default |
 
 The portal checks that send SMS can only be switched on once MSG91 is set up. Apps and pages ask `GET /v1/checks`, or
 read `checks` on the store page, to know which steps to show.
 
 | Route | |
 |---|---|
-| `GET /v1/checks?channel=portal\|app\|website` | `{channel, captcha, otp, emailVerification, mobileVerification}` (CORS). `portal` is only true on the portal's address |
+| `GET /v1/checks?channel=portal\|app\|website` | `{channel, captcha, otp, emailVerification, mobileVerification, demoMode}` (CORS). `portal` is only true on the portal's address |
 | `GET /v1/captcha?channel=app\|website` | Food ordering: `{enabled: false}` or `{enabled: true, id, image}` (CORS). Send `{captchaId, captcha}` with `/v1/otp/send` (and `channel`) or with the order |
 | `POST /v1/account/verify-phone` · `/resend-phone` | `{pending, code}` / `{pending}`: after 403 `PHONE_NOT_VERIFIED` (`details.pending`, `details.phone` masked) from sign-up, verify, sign-in or reset |
 | `POST /v1/account/code/send` · `/code/login` | Sign in with a code (portal address only): `{phone}` (+ captcha) → always `{ok: true}`; `{phone, code}` → signed in. Only for the owner of the one account with that confirmed mobile. 404 `NOT_AVAILABLE` when off |
