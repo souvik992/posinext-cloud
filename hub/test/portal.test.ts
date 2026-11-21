@@ -51,6 +51,16 @@ test('portal: pages and files on the portal address; the browser routes the rest
     const status = await get(h.base, '/v1/status', 'portal.posinext.com');
     assert.equal(status.headers['content-type'], 'application/json; charset=utf-8');
     assert.ok(JSON.parse(status.body).components);
+    // Table QR codes of an outlet linked through the portal address: the guest relay answers, never the portal page
+    for (const p of ['/s/spice-garden/a/tableqr/?t=x', '/s/spice-garden/a/tableqr/app.js', '/s/spice-garden/a/tableqr/api/menu']) {
+      const r = await get(h.base, p, 'portal.posinext.com');
+      assert.equal(r.body.includes('id="root"'), false, p);
+      assert.notEqual(r.status, 200, `${p}: the outlet is not connected, so the relay says so`);
+    }
+    const bare = await get(h.base, '/s/spice-garden/a/tableqr?t=x', 'portal.posinext.com');
+    assert.deepEqual([bare.status, bare.headers.location], [301, '/s/spice-garden/a/tableqr/?t=x']);
+    // a portal page that merely starts with /s/ is still the portal's
+    assert.equal((await get(h.base, '/s/spice-garden', 'portal.posinext.com')).body.includes('id="root"'), true);
     // the hub's own address is unchanged
     const own = await get(h.base, '/', '127.0.0.1');
     assert.equal(own.status, 302);

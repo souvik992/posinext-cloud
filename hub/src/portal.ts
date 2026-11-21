@@ -6,7 +6,8 @@ import { extname, join, normalize, sep } from 'node:path';
  * P8-09 (ADR-0007): the customer portal (souvik992/saas-portal cloud/saas-web, built by its CI, fetched by
  * deploy/portal.sh into HUB_PORTAL_DIR) served on the portal's own address (HUB_PORTAL_DOMAIN, e.g.
  * portal.posinext.com). Its API calls (/v1/...) go to this hub on the same address, so the HttpOnly session cookie
- * needs no cross-site rules. Any other path that is not a file is the portal's index.html (it routes in the browser).
+ * needs no cross-site rules. So do DinePOS add-on guest pages (/s/<store>/a/<addon>/..., the guest relay). Any other
+ * path that is not a file is the portal's index.html (it routes in the browser).
  */
 
 const TYPES: Record<string, string> = {
@@ -56,6 +57,9 @@ export class Portal {
     let path = raw;
     try { path = decodeURIComponent(raw); } catch { /* a malformed %-escape: not a file; the page is served */ }
     if (path.startsWith('/v1/') || path === '/health' || path.startsWith('/health/')) return false;
+    // DinePOS add-on guest pages (Table QR): an outlet linked through the portal address prints its codes as
+    // <portal>/s/<store>/a/<addon>/..., which must reach the guest relay, not the portal's index.html
+    if (/^\/s\/[^/]+\/a(\/|$)/.test(path)) return false;
     if (!this.ready) {
       res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end('The customer portal is being installed. Please try again in a few minutes.');
