@@ -254,6 +254,35 @@ export class Hub {
     return this.settings();
   }
 
+  /**
+   * Deletes a customer account (admin). Its people go, with their sign-ins, codes, support tickets and download history,
+   * and its outlets are unlinked (the stores stay). Licence keys are append-only, and trial records keep one free trial
+   * per email, mobile and PC, so the account row stays as an empty "Deleted account" for them to point at. The email can
+   * sign up again (without a second trial). revokeKeys: its keys still in use stop working too.
+   */
+  deleteAccount(accountId: string, o: { revokeKeys?: boolean } = {}) {
+    const a = one<{ id: string; name: string; status: string }>(this.db, 'SELECT id, name, status FROM account WHERE id = ?', accountId);
+    if (!a || a.status === 'deleted') throw new HubError('NOT_FOUND', 'No such account.', 404);
+    const has = (table: string) => Boolean(one(this.db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", table));
+    return tx(this.db, () => {
+      let revokedKeys = 0;
+      if (o.revokeKeys) {
+        for (const g of many<{ id: string }>(this.db, 'SELECT id FROM licence_grant WHERE account_id = ? AND revoked_at IS NULL', accountId)) { this.licences.revoke(g.id, 'Account deleted'); revokedKeys++; }
+      }
+      const users = "SELECT id FROM account_user WHERE account_id = ?";
+      for (const t of ['account_session', 'email_code', 'sms_code', ...(has('download_log') ? ['download_log'] : [])]) exec(this.db, `DELETE FROM ${t} WHERE user_id IN (${users})`, accountId);
+      if (has('ticket')) {
+        exec(this.db, 'DELETE FROM ticket_message WHERE ticket_id IN (SELECT id FROM ticket WHERE account_id = ?)', accountId);
+        exec(this.db, 'DELETE FROM ticket WHERE account_id = ?', accountId);
+      }
+      const people = Number(this.db.prepare('DELETE FROM account_user WHERE account_id = ?').run(accountId).changes);
+      const outlets = Number(this.db.prepare('DELETE FROM account_store WHERE account_id = ?').run(accountId).changes);
+      exec(this.db, "UPDATE account SET name = 'Deleted account', phone = '', gstin = NULL, phone_verified_at = NULL, status = 'deleted' WHERE id = ?", accountId);
+      this.opts.log?.info('account deleted by the admin', { account: accountId, people, outlets, revokedKeys });
+      return { deleted: true, people, outlets, revokedKeys };
+    });
+  }
+
   /** Stops (or restarts) a store's online orders from the hub, whatever its POS says. */
   pauseStore(slug: string, paused: boolean, reason?: unknown) {
     const s = this.store({ slug });

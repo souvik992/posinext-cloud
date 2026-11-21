@@ -58,15 +58,19 @@ export interface Packaging { mode: 'none' | 'per_item' | 'percent'; /** paise pe
 type LogLine = { at: number; dir: 'in' | 'out'; kind: string; ok: boolean; text: string };
 export interface AccountView {
   set: boolean; env: 'staging' | 'production'; baseUrl: string; username: string; apiKeyHint: string | null; bizId: string;
-  webhookUrl: string | null; webhookUrlProblem: string | null; stores: number; pending: number; log: LogLine[];
+  webhookUrl: string | null; webhookUrlProblem: string | null; stores: number; pending: number;
+  /** The newest LOG_PAGE lines; logTotal: all kept (GET /v1/admin/urbanpiper/log pages through them). */
+  log: LogLine[]; logTotal: number;
 }
 export interface LinkView {
   set: boolean; account: { set: boolean; env: 'staging' | 'production' }; locationRef: string;
   city: string; address: string; phone: string; platforms: Platform[]; enabled: boolean;
   /** Packaging as typed: rupees per item, or a percentage. */
   packMode: Packaging['mode']; packValue: string;
-  menuSent: boolean; pending: number; log: LogLine[];
+  menuSent: boolean; pending: number; log: LogLine[]; logTotal: number;
 }
+/** Activity lines per page on the admin page (up to 500 are kept per store, and 500 for the account). */
+export const LOG_PAGE = 20;
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '');
 const num = (v: unknown) => (typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN);
@@ -121,8 +125,18 @@ export class UrbanPiper {
     return { s, l };
   }
   private platforms(l: LinkRow): Platform[] { return (JSON.parse(l.platforms_json) as Platform[]).filter((p) => PLATFORMS.includes(p)); }
-  private logOf(storeId: string | null): LogLine[] {
-    return many<{ at: number; dir: 'in' | 'out'; kind: string; ok: number; text: string }>(this.hub.db, 'SELECT at, dir, kind, ok, text FROM up_log WHERE store_id IS ? ORDER BY id DESC LIMIT 40', storeId).map((r) => ({ ...r, ok: Boolean(r.ok) }));
+  private logOf(storeId: string | null, page = 1, size = LOG_PAGE): LogLine[] {
+    return many<{ at: number; dir: 'in' | 'out'; kind: string; ok: number; text: string }>(this.hub.db, 'SELECT at, dir, kind, ok, text FROM up_log WHERE store_id IS ? ORDER BY id DESC LIMIT ? OFFSET ?', storeId, size, (page - 1) * size).map((r) => ({ ...r, ok: Boolean(r.ok) }));
+  }
+  private logCount(storeId: string | null) { return one<{ n: number }>(this.hub.db, 'SELECT COUNT(*) AS n FROM up_log WHERE store_id IS ?', storeId)?.n ?? 0; }
+
+  /** One page of the activity log, newest first: the account's (no slug) or a store's. */
+  logPage(slug: string | null, pageIn: unknown, sizeIn: unknown) {
+    const storeId = slug ? this.hub.store({ slug }).id : null;
+    const size = Math.min(100, Math.max(5, Math.trunc(Number(sizeIn)) || LOG_PAGE));
+    const total = this.logCount(storeId), pages = Math.max(1, Math.ceil(total / size));
+    const page = Math.min(pages, Math.max(1, Math.trunc(Number(pageIn)) || 1));
+    return { log: this.logOf(storeId, page, size), page, pages, size, total };
   }
   private pendingOf(storeId: string | null) { return one<{ n: number }>(this.hub.db, 'SELECT COUNT(*) AS n FROM up_outbox WHERE store_id IS ? AND done_at IS NULL', storeId)?.n ?? 0; }
   /** Where UrbanPiper sends the account's webhooks. Needs the hub's public https address. */
@@ -135,10 +149,10 @@ export class UrbanPiper {
   accountView(base: string): AccountView {
     const a = this.account();
     const stores = one<{ n: number }>(this.hub.db, 'SELECT COUNT(*) AS n FROM up_link')?.n ?? 0;
-    if (!a) return { set: false, env: 'staging', baseUrl: STAGING_URL, username: '', apiKeyHint: null, bizId: '', webhookUrl: null, webhookUrlProblem: null, stores, pending: this.pendingOf(null), log: this.logOf(null) };
+    if (!a) return { set: false, env: 'staging', baseUrl: STAGING_URL, username: '', apiKeyHint: null, bizId: '', webhookUrl: null, webhookUrlProblem: null, stores, pending: this.pendingOf(null), log: this.logOf(null), logTotal: this.logCount(null) };
     return {
       set: true, env: a.base_url === STAGING_URL ? 'staging' : 'production', baseUrl: a.base_url, username: a.username, apiKeyHint: `…${a.api_key.slice(-4)}`, bizId: a.biz_id,
-      webhookUrl: this.webhookUrl(a.biz_id, base), webhookUrlProblem: this.baseProblem(base), stores, pending: this.pendingOf(null), log: this.logOf(null),
+      webhookUrl: this.webhookUrl(a.biz_id, base), webhookUrlProblem: this.baseProblem(base), stores, pending: this.pendingOf(null), log: this.logOf(null), logTotal: this.logCount(null),
     };
   }
 
@@ -183,11 +197,11 @@ export class UrbanPiper {
     const s = this.hub.store({ slug });
     const l = this.link(s.id), a = this.account();
     const account = { set: Boolean(a), env: (a && a.base_url !== STAGING_URL ? 'production' : 'staging') as 'staging' | 'production' };
-    const log = this.logOf(s.id), pending = this.pendingOf(s.id);
-    if (!l) return { set: false, account, locationRef: slug, city: '', address: s.menu_json ? (this.hub.menu(s)?.serviceability.location?.label ?? '') : '', phone: '', platforms: ['swiggy', 'zomato'], enabled: true, packMode: 'none', packValue: '', menuSent: false, pending, log };
+    const log = this.logOf(s.id), logTotal = this.logCount(s.id), pending = this.pendingOf(s.id);
+    if (!l) return { set: false, account, locationRef: slug, city: '', address: s.menu_json ? (this.hub.menu(s)?.serviceability.location?.label ?? '') : '', phone: '', platforms: ['swiggy', 'zomato'], enabled: true, packMode: 'none', packValue: '', menuSent: false, pending, log, logTotal };
     return {
       set: true, account, locationRef: l.location_ref, city: l.city, address: l.address, phone: l.phone, platforms: this.platforms(l), enabled: Boolean(l.enabled),
-      packMode: l.pack_mode, packValue: l.pack_mode === 'none' ? '' : String(l.pack_value / 100), menuSent: l.menu_sig !== null, pending, log,
+      packMode: l.pack_mode, packValue: l.pack_mode === 'none' ? '' : String(l.pack_value / 100), menuSent: l.menu_sig !== null, pending, log, logTotal,
     };
   }
 

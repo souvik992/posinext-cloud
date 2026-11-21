@@ -220,7 +220,8 @@ read `checks` on the store page, to know which steps to show.
 | `GET /v1/account/analytics` | sales analytics for the account's outlets (see "Sales analytics for the portal") |
 | `POST /v1/account/password` | `{current, password}` |
 | `GET /v1/account/status` | `{signupOpen}` |
-| `GET /v1/admin/accounts` (admin key) | the newest 500 accounts |
+| `GET /v1/admin/accounts` (admin key) | the newest 500 accounts (deleted ones left out), each with `activeKeys` |
+| `POST /v1/admin/accounts/<id>/delete` (admin key) | `{revokeKeys?}`: deletes the account's people, sign-ins, codes, support tickets and download history and unlinks its outlets (the stores stay). The account row stays as an empty "Deleted account" (status `deleted`): licence keys are append-only and trial records keep one free trial per email, mobile and PC. Keys keep working unless `revokeKeys`. Admin page: Accounts > Delete (type DELETE to confirm) |
 
 **Email** (`src/mailer.ts`): Brevo, free plan. Set `HUB_BREVO_API_KEY`, `HUB_MAIL_FROM` (a sender verified in Brevo)
 and optionally `HUB_MAIL_FROM_NAME` in `/etc/posinext-cloud.env`. Without them, sign-up is **closed**. For development,
@@ -442,7 +443,8 @@ Then:
   with the menu as an item-level charge (both platforms take only that). GST on it is set in Atlas (Zomato) or by the
   Swiggy contact. Cess stays inside the item price (UrbanPiper has GST taxes only).
 - Calls to UrbanPiper go through an outbox that retries while UrbanPiper cannot be reached or is busy. Everything sent
-  and received is listed under **Activity** on the store's page.
+  and received is listed under **Activity** on the store's page, 20 lines a page (`GET /v1/admin/urbanpiper/log?store=<slug>&page=N`;
+  no `store`: the account's log). Up to 500 lines are kept per store.
 - The menu is checked against the platforms' rules first (unique names, Zomato ignoring numbers in names, descriptions,
   meat named in non-veg items, offer and alcohol words, veg marking). Prices that include GST are sent without it, with
   CGST and SGST as taxes, so the customer pays the POS price.

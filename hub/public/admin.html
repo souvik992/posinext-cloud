@@ -459,7 +459,21 @@
         h('td', { class: 'num' }, String(a.users)),
         h('td', { class: 'num' }, String(a.stores)),
         h('td', {}, when(a.createdAt)),
-        h('td', {}, a.owner ? h('button', { onclick: () => resetTrial(a.owner.email, '', '') }, 'Reset trial') : ''))))));
+        h('td', {}, h('div', { class: 'row', style: 'flex-wrap:nowrap' },
+          a.owner ? h('button', { onclick: () => resetTrial(a.owner.email, '', '') }, 'Reset trial') : null,
+          h('button', { class: 'danger', onclick: () => deleteAccount(a) }, 'Delete'))))))));
+  }
+  async function deleteAccount(a) {
+    const who = `${a.name}${a.owner ? ` (${a.owner.email})` : ''}`;
+    const typed = prompt(`Delete the account ${who}?\n\nIts people, sign-ins, support tickets and download history are removed and its ${a.stores} outlet${a.stores === 1 ? '' : 's'} unlinked (the stores stay). This cannot be undone. The email can sign up again, without a second free trial.\n\nType DELETE to confirm.`);
+    if (typed === null) return;
+    if (typed.trim() !== 'DELETE') { $('trialMsg').textContent = 'Not deleted: type DELETE to confirm.'; return; }
+    const revokeKeys = a.activeKeys > 0 && confirm(`${a.name} has ${a.activeKeys} licence key${a.activeKeys === 1 ? '' : 's'} in use.\n\nOK: revoke them too (the apps on those PCs stop working).\nCancel: keep them working.`);
+    try {
+      const r = await api('POST', `/v1/admin/accounts/${encodeURIComponent(a.id)}/delete`, { revokeKeys });
+      $('trialMsg').textContent = `Deleted ${who}: ${r.people} ${r.people === 1 ? 'person' : 'people'} removed, ${r.outlets} outlet${r.outlets === 1 ? '' : 's'} unlinked${revokeKeys ? `, ${r.revokedKeys} licence key${r.revokedKeys === 1 ? '' : 's'} revoked` : ', licence keys kept'}.`;
+      await renderAccounts();
+    } catch (e) { $('trialMsg').textContent = e.message; }
   }
   async function resetTrial(email, hardwareId, product) {
     const who = [email, hardwareId].filter(Boolean).join(' / ');
@@ -770,11 +784,31 @@
       h('input', { id: `up-${k}`, value: st.draft[k] ?? '', autocomplete: 'off', spellcheck: 'false', ...attrs, oninput: (e) => { st.draft[k] = e.target.value; st.dirty = true; } }),
       hint ? h('div', { class: 'hint' }, hint) : null, h('div', { class: 'err' }, st.errors[k] || ''));
   }
-  function upLog(v) {
-    return [h('h3', { style: 'margin-top:14px' }, 'Activity', v.pending ? h('span', { class: 'muted', style: 'font-weight:400' }, ` (${v.pending} waiting to be sent)`) : null),
-      v.log.length ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, ''), h('th', {}, 'What'), h('th', {}, ''), h('th', {}, 'Result'))),
-        h('tbody', {}, v.log.map((l) => h('tr', {}, h('td', {}, `${day(l.at)} ${clock(l.at)}`), h('td', { class: 'muted' }, DIR[l.dir]), h('td', {}, l.kind), h('td', {}, chip(l.ok ? 'ok' : 'bad', l.ok ? 'OK' : 'Failed')), h('td', { style: 'white-space:normal' }, l.text))))))
-        : h('p', { class: 'muted' }, 'Nothing yet.')];
+  // the activity log, 20 lines a page (newest first); the page shown is kept per log ('' = the account, else a store slug)
+  const UP_LOG_SIZE = 20, upLogPage = new Map();
+  function upLog(v, key) {
+    const box = h('div', {});
+    const draw = (lines, page, total) => {
+      const pages = Math.max(1, Math.ceil(total / UP_LOG_SIZE));
+      box.replaceChildren(lines.length ? h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, ''), h('th', {}, 'What'), h('th', {}, ''), h('th', {}, 'Result'))),
+          h('tbody', {}, lines.map((l) => h('tr', {}, h('td', {}, `${day(l.at)} ${clock(l.at)}`), h('td', { class: 'muted' }, DIR[l.dir]), h('td', {}, l.kind), h('td', {}, chip(l.ok ? 'ok' : 'bad', l.ok ? 'OK' : 'Failed')), h('td', { style: 'white-space:normal' }, l.text))))))
+        : h('p', { class: 'muted' }, 'Nothing yet.'),
+        pages > 1 ? h('div', { class: 'row', style: 'margin-top:8px;align-items:center' },
+          h('button', { disabled: page <= 1, onclick: () => go(1) }, '« Newest'),
+          h('button', { disabled: page <= 1, onclick: () => go(page - 1) }, '‹ Previous'),
+          h('span', { class: 'muted' }, `Page ${page} of ${pages} · ${total} entries`),
+          h('button', { disabled: page >= pages, onclick: () => go(page + 1) }, 'Next ›'),
+          h('button', { disabled: page >= pages, onclick: () => go(pages) }, 'Oldest »')) : null);
+    };
+    const go = async (page) => {
+      try {
+        const r = await api('GET', `/v1/admin/urbanpiper/log?${key ? `store=${encodeURIComponent(key)}&` : ''}page=${page}&size=${UP_LOG_SIZE}`);
+        upLogPage.set(key, r.page); draw(r.log, r.page, r.total);
+      } catch (e) { box.replaceChildren(h('div', { class: 'err' }, e.message)); }
+    };
+    const page = upLogPage.get(key) || 1;
+    if (page === 1) draw(v.log, 1, v.logTotal ?? v.log.length); else go(page);
+    return [h('h3', { style: 'margin-top:14px' }, 'Activity', v.pending ? h('span', { class: 'muted', style: 'font-weight:400' }, ` (${v.pending} waiting to be sent)`) : null), box];
   }
   async function upRun(st, fn, rerender) {
     st.busy = true; st.msg = null; st.errors = {}; rerender();
@@ -820,7 +854,7 @@
         h('div', {}, 'UrbanPiper sends orders for all stores to:'),
         h('div', { class: 'linkbox' }, h('input', { readonly: true, value: v.webhookUrl, 'aria-label': 'Webhook address', onfocus: (e) => e.target.select() })),
         v.webhookUrlProblem ? h('div', { class: 'err' }, v.webhookUrlProblem) : h('div', { class: 'hint' }, '"Set up order links" registers this address with UrbanPiper, with a secret only this hub knows. Orders sent without the secret are refused.')) : null,
-      v.set ? upLog(v) : null));
+      v.set ? upLog(v, '') : null));
   }
 
   // ---- one store (store page)
@@ -868,7 +902,7 @@
       v.set && !published ? h('div', { class: 'hint' }, 'Store details and menu can be sent once the shop\'s POS has connected and published them.') : null,
       st.msg ? h('div', { class: st.msg.ok ? 'box' : 'banner' }, st.msg.text) : null,
       st.warnings.length ? h('div', { class: 'banner info' }, h('b', {}, 'Swiggy and Zomato may refuse or hide some items:'), h('ul', { style: 'margin:6px 0 0;padding-left:18px' }, st.warnings.map((w) => h('li', {}, w)))) : null,
-      v.set ? upLog(v) : null);
+      v.set ? upLog(v, slug) : null);
   }
 
   async function pause(slug, paused, reason, err) {

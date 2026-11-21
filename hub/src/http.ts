@@ -387,6 +387,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   });
   add('GET', '/v1/admin/demos', (c) => { admin(c); return { demos: demos?.adminList() ?? [], available: demos ? demos.unavailable() === null : false, reason: demos?.unavailable() ?? 'Not set up.' }; });
   add('GET', '/v1/admin/accounts', (c) => { admin(c); return { accounts: hub.accounts.adminList(), signupOpen: hub.accounts.open }; });
+  add('POST', '/v1/admin/accounts/:id/delete', (c) => { admin(c); return hub.deleteAccount(c.params.id!, { revokeKeys: (c.body as { revokeKeys?: unknown } | null)?.revokeKeys === true }); });
   // a second 30-day trial (testing, or agreed with a customer): revokes the trial keys, clears the trial claims
   add('POST', '/v1/admin/trials/reset', (c) => {
     admin(c);
@@ -454,6 +455,8 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   // ---- Swiggy / Zomato through UrbanPiper: the store's details (admin), and UrbanPiper's webhooks
   // the one UrbanPiper account (Hub settings)
   add('GET', '/v1/admin/urbanpiper', (c) => { admin(c); return up.accountView(base(c)); });
+  // the activity log, a page at a time: the account's, or ?store=<slug>; ?page=1 is the newest
+  add('GET', '/v1/admin/urbanpiper/log', (c) => { admin(c); return up.logPage(c.query.get('store') || null, c.query.get('page'), c.query.get('size')); });
   add('PUT', '/v1/admin/urbanpiper', (c) => { admin(c); return up.saveAccount(c.body, base(c)); });
   add('DELETE', '/v1/admin/urbanpiper', (c) => { admin(c); return up.removeAccount(); });
   add('POST', '/v1/admin/urbanpiper/test', (c) => { admin(c); return up.test(); });

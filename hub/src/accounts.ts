@@ -386,15 +386,17 @@ export class Accounts {
   // ---------------------------------------------------------------- admin, timers
 
   adminList() {
-    return many<{ id: string; name: string; phone: string; status: string; created_at: number; owner_email: string | null; owner_name: string | null; verified_at: number | null; users: number; stores: number }>(this.db, `
+    return many<{ id: string; name: string; phone: string; status: string; created_at: number; owner_email: string | null; owner_name: string | null; verified_at: number | null; users: number; stores: number; keys: number }>(this.db, `
       SELECT a.id, a.name, a.phone, a.status, a.created_at, o.email AS owner_email, o.name AS owner_name, o.verified_at,
         (SELECT COUNT(*) FROM account_user u WHERE u.account_id = a.id) AS users,
-        (SELECT COUNT(*) FROM account_store s WHERE s.account_id = a.id) AS stores
+        (SELECT COUNT(*) FROM account_store s WHERE s.account_id = a.id) AS stores,
+        (SELECT COUNT(*) FROM licence_grant g WHERE g.account_id = a.id AND g.revoked_at IS NULL AND g.expires_at > ?) AS keys
       FROM account a LEFT JOIN account_user o ON o.account_id = a.id AND o.role = 'owner'
-      GROUP BY a.id ORDER BY a.created_at DESC LIMIT 500`).map((r) => ({
+      WHERE a.status != 'deleted'
+      GROUP BY a.id ORDER BY a.created_at DESC LIMIT 500`, this.now()).map((r) => ({
       id: r.id, name: r.name, phone: r.phone, status: r.status, createdAt: r.created_at,
       owner: r.owner_email ? { email: r.owner_email, name: r.owner_name, verified: r.verified_at !== null } : null,
-      users: r.users, stores: r.stores,
+      users: r.users, stores: r.stores, activeKeys: r.keys,
     }));
   }
 
