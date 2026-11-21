@@ -11,8 +11,8 @@ import { connect as netConnect, isIP } from 'node:net';
 import type { Socket } from 'node:net';
 import { randomUUID } from 'node:crypto';
 
-/** replyTo: where a reply goes (e.g. the restaurant that asked for a demo). */
-export interface Mail { to: string; subject: string; text: string; replyTo?: string }
+/** replyTo: where a reply goes (e.g. the restaurant that asked for a demo). html: sent alongside the text when given. */
+export interface Mail { to: string; subject: string; text: string; html?: string; replyTo?: string }
 export interface Mailer {
   /** 'log' is development only: sign-up is refused in production with it. */
   kind: 'brevo' | 'smtp' | 'log' | 'test';
@@ -31,7 +31,7 @@ export function brevoMailer(o: { apiKey: string; from: string; fromName?: string
       const r = await f('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: { 'api-key': o.apiKey, 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({ sender: { email: o.from, name: o.fromName ?? 'DinePOS' }, to: [{ email: m.to }], ...(m.replyTo ? { replyTo: { email: m.replyTo } } : {}), subject: m.subject, textContent: m.text }),
+        body: JSON.stringify({ sender: { email: o.from, name: o.fromName ?? 'DinePOS' }, to: [{ email: m.to }], ...(m.replyTo ? { replyTo: { email: m.replyTo } } : {}), subject: m.subject, textContent: m.text, ...(m.html ? { htmlContent: m.html } : {}) }),
         signal: AbortSignal.timeout(15_000),
       });
       if (!r.ok) throw new Error(`Brevo refused the email (${r.status}): ${(await r.text().catch(() => '')).slice(0, 200)}`);
@@ -62,11 +62,22 @@ const header = (v: string): string => {
   return /^[\x20-\x7e]*$/.test(one) ? one : `=?UTF-8?B?${Buffer.from(one, 'utf8').toString('base64')}?=`;
 };
 
-/** The message sent after DATA: CRLF lines, the body in base64 (so no line starts with a dot). */
+const base64Lines = (s: string) => Buffer.from(s.replace(/\r?\n/g, CRLF), 'utf8').toString('base64').match(/.{1,76}/g) ?? [];
+
+/**
+ * The message sent after DATA: CRLF lines, bodies in base64 (so no line starts with a dot). With html: a
+ * multipart/alternative of the text and the HTML (mail apps show the last part they can).
+ */
 export function smtpMessage(o: { from: string; fromName?: string }, m: Mail, now = new Date()): string {
   const domain = o.from.split('@')[1] ?? 'localhost';
   const name = o.fromName ? header(o.fromName.replace(/["\\]/g, '')) : '';
-  const body = Buffer.from(m.text.replace(/\r?\n/g, CRLF), 'utf8').toString('base64').match(/.{1,76}/g) ?? [];
+  const boundary = `=_posinext_${randomUUID().replace(/-/g, '')}`;
+  const content = m.html
+    ? [`Content-Type: multipart/alternative; boundary="${boundary}"`, '',
+      `--${boundary}`, 'Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: base64', '', ...base64Lines(m.text),
+      `--${boundary}`, 'Content-Type: text/html; charset=utf-8', 'Content-Transfer-Encoding: base64', '', ...base64Lines(m.html),
+      `--${boundary}--`]
+    : ['Content-Type: text/plain; charset=utf-8', 'Content-Transfer-Encoding: base64', '', ...base64Lines(m.text)];
   return [
     `From: ${name ? `"${name}" ` : ''}<${o.from}>`,
     `To: <${m.to}>`,
@@ -75,10 +86,7 @@ export function smtpMessage(o: { from: string; fromName?: string }, m: Mail, now
     `Date: ${now.toUTCString().replace('GMT', '+0000')}`,
     `Message-ID: <${randomUUID()}@${domain}>`,
     'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=utf-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    ...body,
+    ...content,
   ].join(CRLF);
 }
 

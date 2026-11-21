@@ -4,9 +4,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync } from 'node:fs';
 import { Hub } from '../src/hub.ts';
-import { checkTemplates, fullTemplates, renderMail } from '../src/mail-templates.ts';
+import { checkTemplates, fullTemplates, MAIL_TEMPLATES, renderMail } from '../src/mail-templates.ts';
 import { cleanup, startHub } from './helpers.ts';
-import { decodeBody, decodeSubject, fakeSmtp } from './fake-smtp.ts';
+import { decodeBody, decodeHtml, decodeSubject, fakeSmtp } from './fake-smtp.ts';
 
 // Email set up from the admin page (Hub settings > Email (SMTP)) and the editable customer emails (Email templates).
 
@@ -23,9 +23,18 @@ test('templates: checked (must keep the code, only known {{names}}), filled in, 
   assert.ok(!missing.ok && /must include \{\{code\}\}/.test(missing.errors['verify.body']!));
   // the code in the subject is enough; spaces inside the braces are fine
   const ok = checkTemplates({ verify: { subject: '{{ code }} for Spice', body: 'Welcome!\r\n\r\nThanks.' }, reset: null });
-  assert.deepEqual(ok, { ok: true, value: { verify: { subject: '{{ code }} for Spice', body: 'Welcome!\n\nThanks.' }, reset: null } });
+  // no html sent: the default design; "" = plain text only
+  assert.deepEqual(ok, { ok: true, value: { verify: { subject: '{{ code }} for Spice', body: 'Welcome!\n\nThanks.', html: MAIL_TEMPLATES.verify.html }, reset: null } });
+  const plain = checkTemplates({ verify: { subject: '{{code}}', body: 'x', html: '' } });
+  assert.ok(plain.ok && plain.value.verify!.html === '');
+  const noCode = checkTemplates({ verify: { subject: 'Hi', body: '{{code}}', html: '<p>Welcome</p>' } });
+  assert.ok(!noCode.ok && /HTML must include \{\{code\}\}/.test(noCode.errors['verify.html']!));
+  const script = checkTemplates({ verify: { subject: '{{code}}', body: 'x', html: '<p>{{code}}</p><script>alert(1)</script>' } });
+  assert.ok(!script.ok && /Scripts/.test(script.errors['verify.html']!));
+  // in the HTML, values are escaped and keep their line breaks
+  assert.equal(renderMail({ subject: 's', body: 'b', html: '<div>{{reply}}</div>' }, { reply: 'Use <b>A</b>\nthen B' }).html, '<div>Use &lt;b&gt;A&lt;/b&gt;<br>then B</div>');
   // values are not filled in again (a reply that contains {{code}} stays as typed)
-  assert.deepEqual(renderMail({ subject: 'Re: {{ticketSubject}}', body: '{{reply}}\n{{missing}}' }, { reply: 'Use {{code}}', ticketSubject: 'Help\nme' }), { subject: 'Re: Help me', text: 'Use {{code}}\n' });
+  assert.deepEqual(renderMail({ subject: 'Re: {{ticketSubject}}', body: '{{reply}}\n{{missing}}', html: '' }, { reply: 'Use {{code}}', ticketSubject: 'Help\nme' }), { subject: 'Re: Help me', text: 'Use {{code}}\n' });
   assert.equal(fullTemplates({ verify: { subject: 'S' } }).verify.subject, '{{code}} is your PosiNext code', 'a broken saved template is the default');
 });
 
@@ -58,6 +67,10 @@ test('SMTP on the admin page: closed sign-up opens, codes go through it with the
     assert.match(m.data, /^From: "Spice Garden" <hello@spicegarden\.in>\r\n/m);
     assert.match(decodeSubject(m.data), /^Spice Garden code: \d{6}$/);
     assert.match(decodeBody(m.data), /^Hi! Your code is \d{6} \(10 minutes\)\.$/);
+    // the HTML version goes with it (the default design), with the same code
+    const code = /\d{6}/.exec(decodeBody(m.data))![0];
+    assert.match(m.data, /Content-Type: multipart\/alternative/);
+    assert.ok(decodeHtml(m.data)!.includes(`>${code}</div>`), 'the code is in the HTML');
 
     // the test email: the saved template with example values
     assert.deepEqual(await hub.testMail('Me@Example.com', 'reset'), { sent: true, to: 'me@example.com', template: 'reset' });

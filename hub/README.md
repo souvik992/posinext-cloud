@@ -242,7 +242,7 @@ while Email verification (Security checks) is on. Routes: `GET/PUT/DELETE /v1/ad
 
 **Email templates** (Hub settings > Email templates, `src/mail-templates.ts`): the subject and text of the emails
 customers get — the email verification code, the password reset code and the support ticket answer — with `{{code}}`,
-`{{minutes}}`, `{{reply}}`, `{{staffName}}`, `{{ticketNumber}}` and `{{ticketSubject}}` filled in when sent. Plain text.
+`{{minutes}}`, `{{reply}}`, `{{staffName}}`, `{{ticketNumber}}` and `{{ticketSubject}}` filled in when sent. Each is sent as a designed HTML email (a default PosiNext design, editable, with a live preview) with the plain text alongside (multipart/alternative), or as plain text only. In the HTML, filled-in values are escaped.
 The code emails must keep `{{code}}` and the ticket answer `{{reply}}`. Only changed templates are saved (setting
 `mailTemplates`); "Reset to default" puts one back. Routes: `GET/PUT /v1/admin/mail-templates`.
 

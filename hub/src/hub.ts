@@ -430,7 +430,7 @@ export class Hub {
     const sender = this.mailSender();
     if (sender.kind === 'log' && !this.opts.allowLogMailer) throw new HubError('MAIL_NOT_SET_UP', 'Set up email first.', 400);
     const m = renderMail(this.mailTemplates()[id], MAIL_TEMPLATES[id].vars);
-    try { await sender.send({ to, subject: `[Test] ${m.subject}`, text: m.text }); }
+    try { await sender.send({ ...m, to, subject: `[Test] ${m.subject}` }); }
     catch (e) { throw new HubError('MAIL_FAILED', e instanceof Error ? e.message : String(e), 502); }
     return { sent: true, to, template: id };
   }
@@ -459,7 +459,7 @@ export class Hub {
 
   mailTemplatesView() { return templatesView(this.mailTemplates()); }
 
-  /** Saves changed templates ({ verify: { subject, body }, ... }; null puts one back to the default). Only changes are kept. */
+  /** Saves changed templates ({ verify: { subject, body, html }, ... }; null puts one back to the default). Only changes are kept. */
   saveMailTemplates(input: unknown) {
     const c = checkTemplates(input);
     if (!c.ok) throw new HubError('VALIDATION', Object.values(c.errors)[0]!, 400, { fields: c.errors });
@@ -467,7 +467,7 @@ export class Hub {
     const saved = (r ? JSON.parse(r.value_json) : {}) as Record<string, unknown>;
     for (const [id, t] of Object.entries(c.value)) {
       const d = MAIL_TEMPLATES[id as keyof typeof MAIL_TEMPLATES];
-      if (!t || (t.subject === d.subject && t.body === d.body)) delete saved[id]; else saved[id] = t;
+      if (!t || (t.subject === d.subject && t.body === d.body && t.html === d.html)) delete saved[id]; else saved[id] = t;
     }
     exec(this.db, "INSERT INTO setting (key, value_json, updated_at) VALUES ('mailTemplates',?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at", JSON.stringify(saved), this.now());
     this.opts.log?.info('email templates changed', { changed: Object.keys(saved) });

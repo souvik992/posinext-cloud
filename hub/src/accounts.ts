@@ -465,9 +465,9 @@ export class Accounts {
     const code = this.newCode('email_code', userId, purpose, quietWhenLimited);
     if (code === null) return;
     const templates = this.o.templates ? this.o.templates() : fullTemplates(undefined);
-    const { subject, text } = renderMail(purpose === 'verify' ? templates.verify : templates.reset, { code, minutes: String(CODE_MS / 60_000) });
+    const { subject, text, html } = renderMail(purpose === 'verify' ? templates.verify : templates.reset, { code, minutes: String(CODE_MS / 60_000) });
     try {
-      await this.o.mailer.send({ to: email, subject, text });
+      await this.o.mailer.send({ to: email, subject, text, ...(html ? { html } : {}) });
     } catch (e) {
       this.o.log?.warn('email not sent', { email, error: String(e) });
       throw new HubError('EMAIL_FAILED', 'We could not send the email. Please try again in a minute.', 502);

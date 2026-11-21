@@ -233,9 +233,6 @@
     </div>
     <h2>Swiggy & Zomato (UrbanPiper account)</h2>
     <div id="upAccount"></div>
-    <h2>Set when the hub starts</h2>
-    <div class="card" id="fixed"></div>
-    <p class="muted">Except the OTP switch, these change only by restarting the hub with different environment variables (see hub/README.md), so the admin key alone can never switch them on.</p>
   </section>
 </main>
 <script>
@@ -927,23 +924,6 @@
   $('settingsForm').addEventListener('input', () => { settingsDirty = true; $('settingsSaved').textContent = ''; });
   function fillSettings() {
     for (const f of FIELDS) $(f).value = overview.settings[f];
-    const hub = overview.hub;
-    $('fixed').replaceChildren(
-      kv('Show OTP codes on screen (every ordering channel)', otpToggle(hub)),
-      kv('Online payment (HUB_ONLINE_PAYMENTS)', chip('warn', hub.onlinePayments ? 'On' : 'Off: needs a payment gateway')),
-      hub.routingOverridden ? kv('Road routing', chip('warn', 'Fixed by the hub program; the setting above is ignored')) : '');
-  }
-  // OTP codes on screen: a switch (settings.showOtpCodes); HUB_DEV_OTP=1 on the server keeps it on
-  function otpToggle(hub) {
-    if (hub.devOtpEnv) return h('span', { class: 'row', style: 'align-items:center;gap:8px' }, chip('warn', 'On'), h('span', { class: 'muted' }, 'kept on by HUB_DEV_OTP=1 on the server'));
-    const box = h('input', { type: 'checkbox', checked: hub.devOtp, 'aria-label': 'Show OTP codes on screen', onchange: async () => {
-      const on = box.checked;
-      if (on && !confirm('Show OTP codes on screen on every ordering channel?\n\nAnyone can then order with any mobile number: it is not really checked. Use it only for development, testing and demos.')) { box.checked = false; return; }
-      box.disabled = true;
-      try { const { settings } = await api('PUT', '/v1/admin/settings', { showOtpCodes: on }); overview.settings = settings; await refresh(); }
-      catch (e) { box.checked = !on; alert(e.message); } finally { box.disabled = false; }
-    } });
-    return h('label', { class: 'row', style: 'align-items:center;gap:8px;cursor:pointer;margin:0' }, box, hub.devOtp ? chip('warn', 'On: development only') : chip('ok', 'Off'));
   }
   $('settingsForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -1147,6 +1127,8 @@
   const tpl = { view: null, id: 'verify', drafts: new Map(), lastField: 'tplBody' };
   const tplMsg = (text, ok) => $('tplMsg').replaceChildren(text ? h('div', { class: ok ? 'box' : 'err' }, text) : '');
   const fillVars = (text, vars) => text.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (all, n) => n in vars ? vars[n] : all);
+  const escHtml = (v) => String(v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const fillHtml = (html, vars) => html.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (all, n) => n in vars ? escHtml(vars[n]).replace(/\n/g, '<br>') : all);
   async function fillTemplates() {
     try { tpl.view = await api('GET', '/v1/admin/mail-templates'); } catch (e) { $('tplCard').replaceChildren(h('div', { class: 'err' }, e.message)); return; }
     renderTemplate();
@@ -1154,23 +1136,44 @@
   function renderTemplate() {
     const all = tpl.view.templates, t = all.find((x) => x.id === tpl.id) || all[0];
     tpl.id = t.id;
-    const draft = tpl.drafts.get(t.id) || { subject: t.subject, body: t.body };
-    const dirty = () => { const d = tpl.drafts.get(t.id); return Boolean(d) && (d.subject !== t.subject || d.body !== t.body); };
+    const draft = tpl.drafts.get(t.id) || { subject: t.subject, body: t.body, html: t.html };
+    const dirty = () => { const d = tpl.drafts.get(t.id); return Boolean(d) && (d.subject !== t.subject || d.body !== t.body || d.html !== t.html); };
     const pick = h('select', { id: 'tplPick', 'aria-label': 'Email', onchange: () => { tpl.id = pick.value; tplMsg(''); renderTemplate(); } },
       all.map((x) => h('option', { value: x.id, selected: x.id === t.id }, `${x.label}${x.changed ? ' (changed)' : ''}${tpl.drafts.has(x.id) && x.id !== t.id ? ' — not saved' : ''}`)));
     const subject = h('input', { id: 'tplSubject', value: draft.subject, onfocus: () => { tpl.lastField = 'tplSubject'; } });
-    const body = h('textarea', { id: 'tplBody', rows: '9', onfocus: () => { tpl.lastField = 'tplBody'; } });
+    const body = h('textarea', { id: 'tplBody', rows: '6', onfocus: () => { tpl.lastField = 'tplBody'; } });
     body.value = draft.body;
+    // the HTML version: designed (the default, or edited) or none (plain text only)
+    const html = h('textarea', { id: 'tplHtml', rows: '14', spellcheck: 'false', style: 'font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre', onfocus: () => { tpl.lastField = 'tplHtml'; } });
+    html.value = draft.html;
+    const format = h('select', { id: 'tplFormat', 'aria-label': 'Format', onchange: () => {
+      if (format.value === 'html' && !html.value.trim()) html.value = t.default.html;
+      if (format.value === 'text') { tpl.htmlKept = html.value; html.value = ''; } else if (!html.value.trim() && tpl.htmlKept) html.value = tpl.htmlKept;
+      update();
+    } }, h('option', { value: 'html', selected: Boolean(draft.html) }, 'Designed (HTML) + plain text'), h('option', { value: 'text', selected: !draft.html }, 'Plain text only'));
+    const htmlBox = h('div', {}, h('label', { for: 'tplHtml' }, 'HTML'), html, h('div', { class: 'err', 'data-tpl-err': 'html' }),
+      h('div', { class: 'row', style: 'gap:8px;margin-top:6px;align-items:center' },
+        h('span', { class: 'hint', style: 'margin:0' }, 'Inline styles and tables work best in email. Scripts are not allowed.'),
+        h('button', { type: 'button', onclick: () => { if (html.value === t.default.html || confirm('Replace the HTML with the default design?')) { html.value = t.default.html; update(); } } }, 'Use the default design')));
     const pvSubject = h('div', { style: 'font-weight:600;margin-bottom:6px' }), pvBody = h('div', { style: 'white-space:pre-wrap' });
+    const pvFrame = h('iframe', { sandbox: '', title: 'Email preview', style: 'width:100%;height:520px;border:1px solid var(--line);border-radius:10px;background:#fff' });
+    const pvTextBox = h('div', { class: 'box', style: 'margin-top:0' }, pvSubject, pvBody);
+    const pvTextLabel = h('label', {}, 'Plain text version');
     const unsaved = h('span', { class: 'muted' });
+    let frameTimer = 0;
     const update = () => {
-      tpl.drafts.set(t.id, { subject: subject.value, body: body.value });
+      tpl.drafts.set(t.id, { subject: subject.value, body: body.value, html: html.value });
       if (!dirty()) tpl.drafts.delete(t.id);
+      const designed = format.value === 'html';
+      htmlBox.style.display = designed ? '' : 'none';
+      pvFrame.style.display = designed ? '' : 'none';
+      pvTextLabel.textContent = designed ? 'Plain text version (for mail apps that do not show HTML)' : 'Preview (example values)';
       pvSubject.textContent = fillVars(subject.value, t.vars).replace(/\s+/g, ' ');
       pvBody.textContent = fillVars(body.value, t.vars);
+      clearTimeout(frameTimer); frameTimer = setTimeout(() => { pvFrame.srcdoc = designed ? fillHtml(html.value, t.vars) : ''; }, 250);
       unsaved.textContent = dirty() ? 'Not saved' : '';
     };
-    subject.addEventListener('input', update); body.addEventListener('input', update);
+    subject.addEventListener('input', update); body.addEventListener('input', update); html.addEventListener('input', update);
     const insert = (name) => {
       const el = $(tpl.lastField) || body, text = `{{${name}}}`;
       const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? el.value.length;
@@ -1186,21 +1189,23 @@
       }
     };
     $('tplCard').replaceChildren(
-      h('div', { class: 'hint', style: 'margin:0 0 10px' }, 'The emails customers get. Plain text. Words in {{double braces}} are filled in when the email is sent.'),
+      h('div', { class: 'hint', style: 'margin:0 0 10px' }, 'The emails customers get. Each is sent as a designed (HTML) email with a plain-text version alongside, for mail apps that do not show HTML; or as plain text only. Words in {{double braces}} are filled in when the email is sent.'),
       h('label', { for: 'tplPick', style: 'margin-top:0' }, 'Email'), pick,
       h('div', { class: 'hint' }, t.hint),
       h('div', { class: 'cols' },
         h('div', {},
           h('label', { for: 'tplSubject' }, 'Subject'), subject, h('div', { class: 'err', 'data-tpl-err': 'subject' }),
-          h('label', { for: 'tplBody' }, 'Text'), body, h('div', { class: 'err', 'data-tpl-err': 'body' }),
+          h('label', { for: 'tplFormat' }, 'Format'), format,
+          h('label', { for: 'tplBody' }, 'Plain text'), body, h('div', { class: 'err', 'data-tpl-err': 'body' }),
+          htmlBox,
           h('div', { class: 'row', style: 'gap:6px;margin-top:6px' }, h('span', { class: 'muted' }, 'Insert:'),
             Object.keys(t.vars).map((n) => h('button', { type: 'button', title: `For example: ${t.vars[n]}${t.required.includes(n) ? ' (must be used)' : ''}`, onclick: () => insert(n) }, `{{${n}}}${t.required.includes(n) ? ' *' : ''}`)))),
-        h('div', {}, h('label', {}, 'Preview (example values)'), h('div', { class: 'box', style: 'margin-top:0' }, pvSubject, pvBody))),
+        h('div', {}, h('label', {}, 'Preview (example values)'), pvFrame, pvTextLabel, pvTextBox)),
       h('div', { class: 'actions' },
-        h('button', { class: 'primary', type: 'button', onclick: () => save({ subject: subject.value, body: body.value }, 'Saved. The next email of this kind uses it.') }, 'Save template'),
+        h('button', { class: 'primary', type: 'button', onclick: () => save({ subject: subject.value, body: body.value, html: format.value === 'html' ? html.value : '' }, 'Saved. The next email of this kind uses it.') }, 'Save template'),
         h('button', { type: 'button', onclick: () => { tpl.drafts.delete(t.id); renderTemplate(); } }, 'Undo changes'),
-        t.changed ? h('button', { type: 'button', class: 'danger', onclick: () => { if (confirm(`Put "${t.label}" back to the original text?`)) save(null, 'Back to the original text.'); } }, 'Reset to default') : null,
-        t.changed ? chip('warn', 'Changed') : chip('plain', 'Default text'), unsaved),
+        t.changed ? h('button', { type: 'button', class: 'danger', onclick: () => { if (confirm(`Put "${t.label}" back to the original text and design?`)) save(null, 'Back to the original text and design.'); } }, 'Reset to default') : null,
+        t.changed ? chip('warn', 'Changed') : chip('plain', 'Default'), unsaved),
       mailTestForm('tplTestTo', () => tpl.id, 'Send this email (as saved) to', tplMsg),
       h('div', { id: 'tplMsg' }));
     update();

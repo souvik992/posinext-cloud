@@ -77,8 +77,17 @@ export function fakeSmtp(o: { password?: string; starttls?: boolean } = {}) {
   })));
 }
 
-/** The text of a message as the mailer sends it (base64 body). */
-export const decodeBody = (data: string) => Buffer.from(data.split('\r\n\r\n')[1]!.replace(/\r\n/g, ''), 'base64').toString('utf8');
+/** One part of a message as the mailer sends it (text/plain or text/html, base64), decoded; a plain message is its own text part. */
+const part = (data: string, type: string) => {
+  const at = data.indexOf(`Content-Type: ${type}`);
+  if (at < 0) return undefined;
+  const rest = data.slice(data.indexOf('\r\n\r\n', at) + 4);
+  return Buffer.from(rest.split('\r\n--')[0]!.replace(/\r\n/g, ''), 'base64').toString('utf8');
+};
+/** The text of a message. */
+export const decodeBody = (data: string) => part(data, 'text/plain')!;
+/** The HTML version of a message, if it has one. */
+export const decodeHtml = (data: string) => part(data, 'text/html');
 /** The Subject header, decoded when it is an RFC 2047 word. */
 export const decodeSubject = (data: string) => {
   const v = /\r\nSubject: (.*)\r\n/.exec(data)?.[1] ?? '';
