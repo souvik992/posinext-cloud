@@ -49,6 +49,14 @@ const api = async (method, path, body, extra = {}) => {
   return j;
 };
 let store, cart = new Map(), mode = 'PICKUP', loc = null, quote = null, otpToken = null;
+// the hub's security checks for this channel (admin page): OTP before cash on delivery, captcha before an SMS or order
+let checks = { otp: true, captcha: false }, captchaId = null;
+const canPlace = () => Boolean(quote) && (!checks.otp || Boolean(otpToken));
+async function newCaptcha() {
+  if (!checks.captcha || otpToken) { $('#capBox').hidden = true; captchaId = null; return; }
+  try { const c = await api('GET', '/v1/captcha?channel=website'); captchaId = c.enabled ? c.id : null; $('#capBox').hidden = !c.enabled; if (c.enabled) { $('#capImg').src = c.image; $('#cap').value = ''; } } catch { /* the hub says so on send */ }
+}
+const captchaFields = () => (captchaId ? { captchaId, captcha: $('#cap').value } : {});
 let brand = null, near = null, outlet = null, notice = '';
 
 async function loadBrand() {
@@ -140,6 +148,7 @@ function checkout() {
     <div class="card sum" id="sum"><span class="muted">Working out the total…</span></div>
     <div class="card">
       <label>Name (optional)</label><input id="cname" autocomplete="name">
+      <div id="capBox" hidden><label>Type the characters you see</label><div class="row"><img id="capImg" alt="Picture of 5 characters to type" width="180" height="60" style="border-radius:8px;border:1px solid #ddd"><button class="ghost" id="capNew" type="button">New picture</button></div><input id="cap" maxlength="12" autocomplete="off" style="text-transform:uppercase"></div>
       <label>Mobile number</label><div class="row"><input id="mobile" inputmode="numeric" maxlength="14" autocomplete="tel"><button class="ghost" id="sendOtp">Send code</button></div>
       <div id="otpBox" hidden><label>Code from SMS</label><div class="row"><input id="otp" inputmode="numeric" maxlength="6"><button class="ghost" id="verify">Verify</button></div><div class="muted" id="devOtp"></div></div>
       <div id="otpOk" class="ok" hidden>Mobile verified</div>
@@ -168,14 +177,21 @@ function checkout() {
   }
   $('#sendOtp').onclick = async () => {
     $('#err').textContent = '';
-    try { const r = await api('POST', '/v1/otp/send', { mobile: $('#mobile').value }); $('#otpBox').hidden = false; $('#devOtp').textContent = r.devCode ? `Test mode: your code is ${r.devCode}` : ''; } catch (e) { $('#err').textContent = e.message; }
+    try { const r = await api('POST', '/v1/otp/send', { mobile: $('#mobile').value, channel: 'website', ...captchaFields() }); $('#otpBox').hidden = false; $('#devOtp').textContent = r.devCode ? `Test mode: your code is ${r.devCode}` : ''; } catch (e) { $('#err').textContent = e.message; }
+    newCaptcha(); // each picture is good for one try
   };
   $('#verify').onclick = async () => {
     $('#err').textContent = '';
-    try { otpToken = (await api('POST', '/v1/otp/verify', { mobile: $('#mobile').value, otp: $('#otp').value })).otpToken; $('#otpBox').hidden = true; $('#otpOk').hidden = false; $('#place').disabled = !quote; } catch (e) { $('#err').textContent = e.message; }
+    try { otpToken = (await api('POST', '/v1/otp/verify', { mobile: $('#mobile').value, otp: $('#otp').value })).otpToken; $('#otpBox').hidden = true; $('#otpOk').hidden = false; $('#place').disabled = !canPlace(); newCaptcha(); } catch (e) { $('#err').textContent = e.message; }
   };
+  $('#capNew').onclick = () => newCaptcha();
   $('#place').onclick = place;
   refreshQuote();
+  api('GET', '/v1/checks?channel=website').then((c) => { checks = c; }).catch(() => { /* an older hub: OTP as before */ }).finally(() => {
+    $('#sendOtp').hidden = !checks.otp; // no OTP: the mobile is still asked, for the store to call
+    $('#place').disabled = !canPlace();
+    newCaptcha();
+  });
 }
 async function refreshQuote() {
   quote = null; $('#place').disabled = true;
@@ -183,12 +199,12 @@ async function refreshQuote() {
   try {
     quote = await api('POST', `/v1/stores/${encodeURIComponent(SLUG)}/quote`, { fulfilment: mode, location: loc, lines: lines() });
     $('#sum').innerHTML = `<div><span>Items</span><span>${rs(quote.itemsTotal)}</span></div>${quote.deliveryFee ? `<div><span>Delivery (${quote.distanceKm} km)</span><span>${rs(quote.deliveryFee)}</span></div>` : ''}${quote.packagingFee ? `<div><span>Packaging</span><span>${rs(quote.packagingFee)}</span></div>` : ''}<div class="total"><span>Total</span><span>${rs(quote.total)}</span></div><div class="muted">Ready in about ${quote.etaMinutes} minutes after the store accepts.</div>`;
-    $('#place').disabled = !otpToken;
+    $('#place').disabled = !canPlace();
   } catch (e) { $('#sum').innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
 async function place() {
   $('#err').textContent = ''; $('#place').disabled = true;
-  const body = { fulfilment: mode, payment: 'COD', customer: { name: $('#cname').value || null, mobile: $('#mobile').value }, otpToken, lines: lines(), note: $('#note').value || null, menuVersion: store.menu.version, expectedTotal: quote.total, channel: 'website', location: mode === 'DELIVERY' ? loc : null,
+  const body = { fulfilment: mode, payment: 'COD', customer: { name: $('#cname').value || null, mobile: $('#mobile').value }, otpToken, ...captchaFields(), lines: lines(), note: $('#note').value || null, menuVersion: store.menu.version, expectedTotal: quote.total, channel: 'website', location: mode === 'DELIVERY' ? loc : null,
     address: mode === 'DELIVERY' ? { line1: $('#a1').value, line2: null, landmark: $('#lm').value || null, city: $('#city').value, pincode: $('#pin').value } : null };
   try {
     const r = BRAND
@@ -198,7 +214,7 @@ async function place() {
   } catch (e) {
     if (e.code === 'OUTLET_CHANGED' && e.details?.outlet) { useOutlet(e.details); notice = notice || e.message; return renderMenu(); }
     if (e.code === 'NO_OUTLET') return renderWhere(e.message);
-    $('#err').textContent = e.message; $('#place').disabled = false; if (e.code === 'PRICE_CHANGED') refreshQuote();
+    $('#err').textContent = e.message; $('#place').disabled = false; newCaptcha(); if (e.code === 'PRICE_CHANGED') refreshQuote();
   }
 }
 const STEPS = { PICKUP: ['SENT_TO_STORE', 'ACCEPTED', 'PREPARING', 'READY', 'PICKED_UP'], DELIVERY: ['SENT_TO_STORE', 'ACCEPTED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY', 'DELIVERED'] };

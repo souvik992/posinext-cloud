@@ -20,6 +20,8 @@
 //   HUB_SMTP_HOST, HUB_SMTP_USER, HUB_SMTP_PASS (+ HUB_SMTP_PORT, default 465)  email through a mailbox's SMTP server
 //                      instead of Brevo (e.g. Zoho: smtppro.zoho.in, support@posinext.com, an app password)
 //   HUB_DEMO_REQUEST_TO  where posinext.com "Book a Demo" requests are emailed (needs Brevo or SMTP above); never shown on the site
+//   HUB_MSG91_AUTH_KEY, HUB_MSG91_TEMPLATE_ID (+ HUB_MSG91_OTP_VAR, default otp)  SMS codes through MSG91 (src/sms.ts). Not set:
+//                      no SMS is sent, and the admin page cannot switch on checks that send SMS (security checks)
 //   HUB_SUPPORT_NOTIFY_TO  the support inbox (e.g. support@posinext.com): gets each new portal ticket and customer reply
 //   GITHUB_TOKEN       P8-04: optional; downloads not uploaded yet come from GitHub Releases (60 requests an hour without it)
 // Installers uploaded with `npm run release` (P8-11) are kept in <HUB_DATA_DIR>/downloads (the newest 3 of each).
@@ -27,6 +29,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hub } from './hub.ts';
 import { createHubServer } from './http.ts';
+import { smsFromEnv } from './sms.ts';
 import { UrbanPiper } from './urbanpiper.ts';
 import { HostedOutlets } from './hosted.ts';
 import { Monitor } from './monitor.ts';
@@ -42,7 +45,7 @@ function signingKeyFile(): string | undefined {
 }
 const log = { info: (m: string, d?: unknown) => console.log(new Date().toISOString(), m, d ?? ''), warn: (m: string, d?: unknown) => console.warn(new Date().toISOString(), m, d ?? '') };
 const hub = new Hub({
-  dbPath: join(dir, 'hub.db'), devOtp: process.env.HUB_DEV_OTP === '1', onlinePayments: process.env.HUB_ONLINE_PAYMENTS === '1', log,
+  dbPath: join(dir, 'hub.db'), devOtp: process.env.HUB_DEV_OTP === '1', onlinePayments: process.env.HUB_ONLINE_PAYMENTS === '1', log, sendSms: smsFromEnv(process.env),
   settingDefaults: { routingUrl: process.env.HUB_ROUTING_URL ?? '' },
   mailer: mailerFromEnv(process.env, log), licenceSigningKey: signingKeyFile(), allowLogMailer: process.env.HUB_DEV_MAIL === '1',
   skipEmailVerify: process.env.HUB_SKIP_EMAIL_VERIFY === '1',

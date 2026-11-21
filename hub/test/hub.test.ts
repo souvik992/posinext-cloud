@@ -59,7 +59,7 @@ test('hub: a COD order needs an OTP, is priced by the hub, and reaches the POS t
     const pos = posStream(h.base, key);
     await new Promise((r) => setTimeout(r, 100));
     const noOtp = await h.call('POST', '/v1/stores/demo-burger/orders', { body: { fulfilment: 'PICKUP', payment: 'COD', customer: { mobile: '9876543210' }, lines: [{ itemId: 'burger', qtyMilli: 1000 }], menuVersion: 1, expectedTotal: 12900 } });
-    assert.equal(noOtp.json.error.code, 'VALIDATION'); // COD needs an OTP token
+    assert.equal(noOtp.json.error.code, 'OTP_REQUIRED'); // COD needs an OTP token (the hub's check: it can be switched off per channel)
     const changed = await codOrder(h, { expectedTotal: 100 });
     assert.deepEqual([changed.status, changed.json.error.code, changed.json.error.details.total], [409, 'PRICE_CHANGED', 25800]);
     const online = await h.call('POST', '/v1/stores/demo-burger/orders', { body: { fulfilment: 'PICKUP', payment: 'ONLINE', customer: { mobile: '9876543210' }, lines: [{ itemId: 'burger', qtyMilli: 1000 }], menuVersion: 1, expectedTotal: 12900 } });

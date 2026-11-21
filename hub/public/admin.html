@@ -46,6 +46,10 @@
   .box { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 10px; background: var(--soft); }
   .linkbox { display: flex; gap: 8px; margin-top: 6px; } .linkbox input { font: 14px ui-monospace, Consolas, monospace; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .checks td, .checks th { text-align: center; white-space: normal; }
+  .checks td:first-child, .checks th:first-child { text-align: left; min-width: 220px; }
+  .checks input[type=checkbox] { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+  .checks .na { color: var(--muted); }
   th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
   th { color: var(--muted); font-weight: 600; }
   td.num, th.num { text-align: right; }
@@ -211,6 +215,16 @@
         <div class="actions"><button class="primary" type="submit">Save settings</button><span id="settingsSaved" class="muted"></span></div>
       </form>
     </div>
+    <h2>Security checks</h2>
+    <div class="card">
+      <form id="checksForm">
+        <div class="hint" style="margin:0 0 10px">Tick a box to ask for that check on that channel. <b>Customer website</b> is the portal (sign-up and sign-in on its own address); the hub's own sign-in pages and the Windows apps are never asked. <b>Ordering app</b> and <b>Ordering website</b> are the food ordering channels. Changes apply at once.</div>
+        <div class="scroll"><table class="checks"><thead><tr><th>Check</th><th>Customer website</th><th>Ordering app</th><th>Ordering website</th></tr></thead><tbody id="checksRows"></tbody></table></div>
+        <div id="checksSms" class="hint"></div>
+        <div id="checksErr" class="err"></div>
+        <div class="actions"><button class="primary" type="submit">Save checks</button><span id="checksSaved" class="muted"></span></div>
+      </form>
+    </div>
     <h2>Swiggy & Zomato (UrbanPiper account)</h2>
     <div id="upAccount"></div>
     <h2>Set when the hub starts</h2>
@@ -223,7 +237,7 @@
   const $ = (id) => document.getElementById(id);
   const keyStore = { get: () => { try { return sessionStorage.getItem('hubAdminKey') || ''; } catch { return ''; } },
     set: (v) => { try { v ? sessionStorage.setItem('hubAdminKey', v) : sessionStorage.removeItem('hubAdminKey'); } catch { /* private window */ } } };
-  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false;
+  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false;
   let health = null; // GET /health/deep: hosted outlets down, backups failing
   const ui = { orderStore: '', orderStatus: 'open', expanded: new Set(), links: new Map(), pausing: false, up: new Map(), licence: new Map(), sitePasswords: new Map() };
 
@@ -314,6 +328,7 @@
       else if (r.tab === 'support' && !(document.activeElement && document.activeElement.closest('#support'))) await renderSupport();
       else if (r.tab === 'brands' && !(document.activeElement && document.activeElement.closest('#brands'))) await renderBrands();
       if (!settingsDirty) fillSettings();
+      if (!checksDirty) fillChecks();
       if (r.tab === 'settings' && !(document.activeElement && document.activeElement.closest('#upAccount'))) await renderAccount();
       for (const el of document.querySelectorAll('[data-updated]')) el.textContent = `Updated ${new Date().toLocaleTimeString('en-IN')}`;
     } catch (e) { for (const el of document.querySelectorAll('[data-updated]')) el.textContent = e.message; }
@@ -874,7 +889,7 @@
     $('fixed').replaceChildren(
       kv('Show OTP codes on screen (HUB_DEV_OTP)', hub.devOtp ? chip('warn', 'On: development only') : chip('ok', 'Off')),
       kv('Online payment (HUB_ONLINE_PAYMENTS)', chip('warn', hub.onlinePayments ? 'On' : 'Off: needs a payment gateway')),
-      kv('SMS provider for OTP', hub.smsProvider ? chip('ok', 'Set up') : chip('warn', 'Not built yet')),
+      kv('SMS provider for codes (HUB_MSG91_AUTH_KEY, HUB_MSG91_TEMPLATE_ID)', hub.smsProvider ? chip('ok', 'MSG91 set up') : chip('warn', 'Not set up: codes are only logged')),
       hub.routingOverridden ? kv('Road routing', chip('warn', 'Fixed by the hub program; the setting above is ignored')) : '');
   }
   $('settingsForm').addEventListener('submit', async (ev) => {
@@ -889,6 +904,40 @@
     } catch (e) {
       if (e.fields) for (const [k, m] of Object.entries(e.fields)) { const el = document.querySelector(`[data-err="${k}"]`); if (el) el.textContent = m; }
       else $('settingsErr').textContent = e.message;
+    }
+  });
+
+  // ------------------------------------------------------------ security checks (settings.checks)
+  const CHANNELS = ['portal', 'orderingApp', 'orderingSite'];
+  const CHECKS = [
+    { key: 'captcha', label: 'Captcha', hint: 'A picture of 5 characters to type. Website: sign-up and sign-in. Ordering: before an SMS code is sent, and before an order not confirmed by one.', applies: CHANNELS },
+    { key: 'otp', label: 'OTP (sign in with an SMS code)', hint: 'Website: "Sign in with a code" for accounts with a confirmed mobile. Ordering: the customer confirms their mobile with a code before a cash-on-delivery order.', applies: CHANNELS, sms: true },
+    { key: 'emailVerification', label: 'Email verification', hint: 'A new account confirms its email with a code before it can sign in.', applies: ['portal'] },
+    { key: 'mobileVerification', label: 'Mobile number verification', hint: "The account's mobile is confirmed with an SMS code before its first sign-in on the website (existing accounts too, at their next sign-in).", applies: ['portal'], sms: true },
+  ];
+  $('checksForm').addEventListener('change', () => { checksDirty = true; $('checksSaved').textContent = ''; });
+  function fillChecks() {
+    const c = overview.settings.checks, smsReady = overview.hub.smsProvider || overview.hub.devOtp;
+    $('checksRows').replaceChildren(...CHECKS.map((ck) => h('tr', {},
+      h('td', {}, h('b', {}, ck.label), h('div', { class: 'hint' }, ck.hint)),
+      ...CHANNELS.map((ch) => h('td', {}, ck.applies.includes(ch)
+        ? h('input', { type: 'checkbox', 'data-check': ck.key, 'data-channel': ch, 'aria-label': `${ck.label}: ${ch}`, checked: c[ck.key][ch],
+            // SMS checks on the website need an SMS provider (ordering OTP was on before, so it stays changeable)
+            disabled: ck.sms && ch === 'portal' && !smsReady && !c[ck.key][ch] })
+        : h('span', { class: 'na', title: 'Does not apply to this channel' }, '—'))))));
+    $('checksSms').textContent = smsReady ? '' : 'No SMS provider is set up: the website boxes that send SMS codes stay off until MSG91 is set up (HUB_MSG91_AUTH_KEY, HUB_MSG91_TEMPLATE_ID). Ordering OTP codes are only written to the hub log.';
+  }
+  $('checksForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    $('checksErr').textContent = '';
+    const checks = {};
+    for (const el of document.querySelectorAll('#checksRows input[data-check]')) (checks[el.dataset.check] ??= {})[el.dataset.channel] = el.checked;
+    try {
+      const { settings } = await api('PUT', '/v1/admin/settings', { checks });
+      overview.settings = settings; checksDirty = false; fillChecks();
+      $('checksSaved').textContent = 'Saved. In use now.';
+    } catch (e) {
+      $('checksErr').textContent = e.fields ? Object.values(e.fields).join(' ') : e.message;
     }
   });
 

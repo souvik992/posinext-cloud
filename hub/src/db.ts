@@ -106,6 +106,13 @@ CREATE TABLE IF NOT EXISTS email_code (
   expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, sends INTEGER NOT NULL DEFAULT 0, window_start INTEGER NOT NULL,
   PRIMARY KEY (user_id, purpose)
 );
+-- sms_code: like email_code, for codes sent by SMS to the account's mobile: phone (mobile verification), signin (sign in
+-- with a code). account.phone_verified_at: set once a code sent to account.phone was entered.
+CREATE TABLE IF NOT EXISTS sms_code (
+  user_id TEXT NOT NULL REFERENCES account_user(id), purpose TEXT NOT NULL CHECK (purpose IN ('phone','signin')), code_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, sends INTEGER NOT NULL DEFAULT 0, window_start INTEGER NOT NULL,
+  PRIMARY KEY (user_id, purpose)
+);
 CREATE TABLE IF NOT EXISTS account_store (store_id TEXT PRIMARY KEY REFERENCES store(id), account_id TEXT NOT NULL REFERENCES account(id), added_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS account_store_account ON account_store(account_id);
 -- licence keys signed by this cloud (src/licences.ts, P7-02): append-only. Only revoked_at / revoked_reason may be set,
@@ -147,6 +154,8 @@ export function openHubDb(path: string): Db {
   // P8-06 (ADR-0007): the products an account chose (QSR, Fine Dine or both); accounts made before chose Fine Dine
   const accountCols = new Set((db.prepare('PRAGMA table_info(account)').all() as Array<{ name: string }>).map((c) => c.name));
   if (!accountCols.has('products_json')) db.exec(`ALTER TABLE account ADD COLUMN products_json TEXT NOT NULL DEFAULT '["fine_dine"]'`);
+  // mobile verification: when the account's mobile number was confirmed by an SMS code (null: not yet)
+  if (!accountCols.has('phone_verified_at')) db.exec('ALTER TABLE account ADD COLUMN phone_verified_at INTEGER');
   // P8-02 (ADR-0007): which product a key is for (keys made before are DinePOS)
   const grantCols = new Set((db.prepare('PRAGMA table_info(licence_grant)').all() as Array<{ name: string }>).map((c) => c.name));
   if (!grantCols.has('product')) db.exec("ALTER TABLE licence_grant ADD COLUMN product TEXT NOT NULL DEFAULT 'fine_dine'");

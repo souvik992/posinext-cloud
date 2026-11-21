@@ -29,8 +29,8 @@ export function checkPlaceOrder(input: unknown): Checked<PlaceOrderRequest> {
   const mobile = typeof c.mobile === 'string' ? normaliseMobile(c.mobile) : '';
   if (!MOBILE_RE.test(mobile)) e.mobile = 'Enter a 10-digit mobile number.';
   if (!optText(c.name, 60)) e.name = 'Name can be up to 60 characters.';
-  // Cash on delivery only for a verified mobile: stops fake COD orders. Guest checkout (no OTP) pays online.
-  if (payment === 'COD' && !text(input.otpToken, 200)) e.otp = 'Verify your mobile number with the OTP to pay cash on delivery.';
+  // Cash on delivery for a verified mobile (stops fake COD orders) is the hub's check now: its admin can switch the OTP
+  // off per channel (hub security checks), so the app asks GET /v1/stores/:slug (`checks.otp`) whether to show it.
 
   let address: Address | null = null;
   if (fulfilment === 'DELIVERY') {

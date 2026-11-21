@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,6 +41,8 @@ export interface TestHub {
   hub: Hub; base: string; clock: { t: number }; dir: string; up: UrbanPiper;
   /** P7-01: every email the hub sent (customer accounts) */
   mail: Mail[];
+  /** Every SMS code the hub sent (order OTP, portal mobile verification and sign-in codes). */
+  sms: Array<{ mobile: string; text: string; code: string }>;
   /** P7-04: the browser demos (when started with a demo option) */
   demos: Demos | null;
   call(method: string, path: string, o?: { body?: unknown; key?: string; admin?: boolean; idem?: string; token?: string; headers?: Record<string, string> }): Promise<{ status: number; json: any }>;
@@ -50,7 +53,8 @@ export interface TestHub {
 /** upFetch: a stand-in UrbanPiper for the hub's calls to it (its outbox is then sent only when a test calls up.pump()). */
 export async function startHub(dir = mkdtempSync(join(tmpdir(), 'hub-test-')), clock = { t: Date.parse('2026-10-16T12:00:00+05:30') }, upFetch?: Fetcher, extra: Partial<HttpOptions> = {}): Promise<TestHub> {
   const mail: Mail[] = [];
-  const hub = new Hub({ dbPath: join(dir, 'hub.db'), now: () => clock.t, devOtp: true, onlinePayments: false, mailer: { kind: 'test', send: async (m) => { mail.push(m); } }, licenceSigningKey: TEST_CLOUD_KEY.privateKey });
+  const sms: TestHub['sms'] = [];
+  const hub = new Hub({ dbPath: join(dir, 'hub.db'), now: () => clock.t, devOtp: true, onlinePayments: false, mailer: { kind: 'test', send: async (m) => { mail.push(m); } }, licenceSigningKey: TEST_CLOUD_KEY.privateKey, sendSms: async (mobile, text, code) => { sms.push({ mobile, text, code }); } });
   const up = new UrbanPiper(hub, { fetch: upFetch ?? (async () => { throw new Error('no UrbanPiper in this test'); }), kick: false, allowLocalWebhooks: true });
   const server = createHubServer(hub, { adminKey: 'admin-test-key', heartbeatMs: 100, urbanpiper: up, ...extra });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
@@ -68,7 +72,7 @@ export async function startHub(dir = mkdtempSync(join(tmpdir(), 'hub-test-')), c
     return { status: r.status, json: t ? JSON.parse(t) : null };
   };
   const close = () => new Promise<void>((r) => { server.close(() => r()); server.closeAllConnections(); hub.close(); });
-  const t: TestHub = { hub, base, clock, dir, up, mail, demos: server.demos, call, close, restart: async () => { await close(); return startHub(dir, clock, upFetch, extra); } };
+  const t: TestHub = { hub, base, clock, dir, up, mail, sms, demos: server.demos, call, close, restart: async () => { await close(); return startHub(dir, clock, upFetch, extra); } };
   return t;
 }
 
@@ -99,3 +103,27 @@ export function posStream(base: string, key: string, lastEventId?: number) {
 }
 
 export const cleanup = (dir: string) => rmSync(dir, { recursive: true, force: true });
+
+/**
+ * Calls as a browser makes them on a given address (Host header, e.g. the portal's), keeping the account cookie.
+ * `cookie` is the dp_account value after the last call that set one.
+ */
+export function onHost(base: string, host: string) {
+  const u = new URL(base);
+  let cookie = '';
+  const call = (method: string, path: string, body?: unknown) => new Promise<{ status: number; json: any }>((resolve, reject) => {
+    const text = body === undefined ? '' : JSON.stringify(body);
+    const headers: Record<string, string | number> = { host };
+    if (text) { headers['content-type'] = 'application/json'; headers['content-length'] = Buffer.byteLength(text); }
+    if (cookie) headers.cookie = `dp_account=${cookie}`;
+    const req = http.request({ host: u.hostname, port: u.port, path, method, headers }, (res) => {
+      const set = res.headers['set-cookie']?.map((c) => /^dp_account=([^;]*)/.exec(c)?.[1]).find((v) => v !== undefined);
+      if (set !== undefined) cookie = set;
+      let t = '';
+      res.setEncoding('utf8').on('data', (d) => (t += d)).on('end', () => resolve({ status: res.statusCode!, json: t ? JSON.parse(t) : null }));
+    });
+    req.on('error', reject);
+    req.end(text);
+  });
+  return Object.defineProperty(call, 'cookie', { get: () => cookie }) as typeof call & { readonly cookie: string };
+}

@@ -15,8 +15,10 @@ import { checkPlaceOrder, MOBILE_RE, normaliseMobile } from '../../contract/src/
 import { checkServiceability, isOpen, quote } from '../../contract/src/serviceability.ts';
 import { priceOrder } from '../../contract/src/menu.ts';
 import type { PublishedMenu } from '../../contract/src/menu.ts';
-import { checkSettings, SETTING_DEFAULTS } from './settings.ts';
-import type { HubSettings } from './settings.ts';
+import { checkSettings, fullChecks, orderingChannel, SETTING_DEFAULTS, SMS_CHECKS } from './settings.ts';
+import type { Channel, HubSettings } from './settings.ts';
+import { Captchas } from './captcha.ts';
+import type { SendSms } from './sms.ts';
 import { checkSite, readSite } from './site.ts';
 import { osrmRoadKm } from './routing.ts';
 import { Accounts } from './accounts.ts';
@@ -43,7 +45,8 @@ export interface HubOptions {
   now?: () => number;
   /** Return OTP codes in the API response (development and the demo page only). */
   devOtp?: boolean;
-  sendSms?: (mobile: string, text: string) => Promise<void>;
+  /** SMS codes (order OTP, portal mobile verification and sign-in codes): MSG91 in production (src/sms.ts). */
+  sendSms?: SendSms;
   /** Road distance in km from a routing service, or null to use the store's road factor. Set: used instead of the routingUrl setting (tests). */
   roadKm?: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) => Promise<number | null>;
   /** Online payment (phase 3) is off until a payment gateway is set up. */
@@ -149,8 +152,11 @@ export class Hub {
     const signing = opts.licenceSigningKey === undefined ? null : typeof opts.licenceSigningKey === 'string' ? loadSigningKey(opts.licenceSigningKey) : opts.licenceSigningKey;
     this.licences = new Licences(this.db, this.now, this.sync, signing);
     this.mailer = opts.mailer ?? logMailer(log);
-    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, log });
+    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, sendSms: opts.sendSms, log });
+    this.captchas = new Captchas(this.now);
   }
+  /** The picture captcha (src/captcha.ts), asked where the security checks say (settings `checks.captcha`). */
+  readonly captchas: Captchas;
   close() { this.db.close(); }
 
   // ---------------------------------------------------------------- stores, pairing, devices
@@ -218,6 +224,9 @@ export class Hub {
     if (!this.cachedSettings) {
       const saved = Object.fromEntries(many<{ key: string; value_json: string }>(this.db, 'SELECT key, value_json FROM setting').map((r) => [r.key, JSON.parse(r.value_json)]));
       const merged: Record<string, unknown> = { ...SETTING_DEFAULTS, ...this.opts.settingDefaults, ...saved };
+      // checks: box by box, so a check or channel added later gets its default; HUB_SKIP_EMAIL_VERIFY is the default for email
+      const base = fullChecks({ emailVerification: { portal: !this.opts.skipEmailVerify } }, fullChecks(this.opts.settingDefaults?.checks));
+      merged.checks = fullChecks(saved.checks, base);
       this.cachedSettings = Object.fromEntries(Object.keys(SETTING_DEFAULTS).map((k) => [k, merged[k]])) as unknown as HubSettings;
     }
     return { ...this.cachedSettings };
@@ -226,11 +235,22 @@ export class Hub {
   saveSettings(input: unknown): HubSettings {
     const c = checkSettings(input);
     if (!c.ok) throw new HubError('VALIDATION', Object.values(c.errors)[0]!, 400, { fields: c.errors });
+    const value: Partial<HubSettings> = { ...c.value, checks: undefined };
+    if (c.value.checks) {
+      const before = this.settings().checks;
+      const checks = fullChecks(c.value.checks, before);
+      // a check that sends SMS cannot work without a provider: switching it on would lock customers out
+      const sms = Boolean(this.opts.sendSms || this.opts.devOtp || this.opts.allowLogMailer);
+      for (const [k, ch] of SMS_CHECKS) {
+        if (checks[k][ch] && !before[k][ch] && !sms) throw new HubError('SMS_NOT_SET_UP', 'Set up the SMS provider (MSG91) before switching on checks that send SMS codes.', 400, { fields: { [`checks.${k}.${ch}`]: 'Needs an SMS provider.' } });
+      }
+      value.checks = checks;
+    } else delete value.checks;
     tx(this.db, () => {
-      for (const [k, v] of Object.entries(c.value)) exec(this.db, 'INSERT INTO setting (key, value_json, updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at', k, JSON.stringify(v), this.now());
+      for (const [k, v] of Object.entries(value)) exec(this.db, 'INSERT INTO setting (key, value_json, updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at', k, JSON.stringify(v), this.now());
     });
     this.cachedSettings = null;
-    this.opts.log?.info('hub settings changed', c.value);
+    this.opts.log?.info('hub settings changed', value);
     return this.settings();
   }
 
@@ -523,6 +543,12 @@ export class Hub {
     return { open: true, reason: null };
   }
 
+  /** What a channel asks for (GET /v1/checks), so an app or page shows the right steps. */
+  checksFor(channel: Channel) {
+    const c = this.settings().checks;
+    return { channel, captcha: c.captcha[channel], otp: c.otp[channel], emailVerification: c.emailVerification[channel], mobileVerification: c.mobileVerification[channel] };
+  }
+
   /** The store page for customer apps. */
   storePublic(slug: string, channel: 'app' | 'website' = 'website') {
     const s = this.store({ slug });
@@ -538,6 +564,8 @@ export class Hub {
       fulfilment: m.options.fulfilment, payments: { cod: m.options.payments.cod, online: m.options.payments.online && Boolean(this.opts.onlinePayments) },
       delivery: { location: sv.location ? { lat: sv.location.lat, lng: sv.location.lng } : null, zones: sv.zones, packagingFee: sv.packagingFee },
       pickup: sv.pickup, hours: sv.hours, acceptMode: m.options.acceptMode,
+      // the security checks for this channel: otp (cash on delivery needs a confirmed mobile), captcha
+      checks: { otp: this.checksFor(orderingChannel(channel)).otp, captcha: this.checksFor(orderingChannel(channel)).captcha },
     };
   }
 
@@ -570,7 +598,10 @@ export class Hub {
 
   // ---------------------------------------------------------------- customer: OTP
 
-  async otpSend(mobileIn: string) {
+  /** An order OTP by SMS. With the captcha on for the channel ("app" | "website"), its answer is checked first. */
+  async otpSend(mobileIn: string, o: { channel?: unknown; captchaId?: unknown; captcha?: unknown } = {}) {
+    const ch = orderingChannel(o.channel === 'app' ? 'app' : 'website');
+    if (this.settings().checks.captcha[ch]) this.captchas.check(o.captchaId, o.captcha);
     const mobile = normaliseMobile(String(mobileIn ?? ''));
     if (!MOBILE_RE.test(mobile)) throw new HubError('VALIDATION', 'Enter a 10-digit mobile number.');
     const now = this.now();
@@ -582,7 +613,7 @@ export class Hub {
       ON CONFLICT(mobile) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
         sends = CASE WHEN ? THEN otp.sends + 1 ELSE 1 END, window_start = CASE WHEN ? THEN otp.window_start ELSE excluded.window_start END`,
       mobile, hash(mobile + code), now + OTP_TTL, now, inWindow ? 1 : 0, inWindow ? 1 : 0);
-    await (this.opts.sendSms ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`);
+    await (this.opts.sendSms ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`, code);
     return { sent: true, ...(this.opts.devOtp ? { devCode: code } : {}) };
   }
 
@@ -625,8 +656,11 @@ export class Hub {
     const channel = req.channel ?? 'website';
     const a = this.availability(s, m, { channel, fulfilment: req.fulfilment, payment: req.payment });
     if (!a.open) throw new HubError(req.payment === 'ONLINE' && /payment/i.test(a.reason ?? '') ? 'PAYMENT_NOT_AVAILABLE' : 'STORE_CLOSED', a.reason!, 409);
-    const verified = this.verifiedMobile(req.otpToken);
-    if (req.payment === 'COD' && verified !== req.customer.mobile) throw new HubError('OTP_REQUIRED', 'Verify your mobile number with the OTP to pay cash on delivery.', 400);
+    // security checks for this channel: OTP for cash on delivery; the captcha for an order not confirmed by an OTP
+    const checks = this.settings().checks, ch = orderingChannel(channel);
+    const verified = this.verifiedMobile(req.otpToken) === req.customer.mobile;
+    if (req.payment === 'COD' && checks.otp[ch] && !verified) throw new HubError('OTP_REQUIRED', 'Verify your mobile number with the OTP to pay cash on delivery.', 400);
+    if (checks.captcha[ch] && !verified) { const b = body as { captchaId?: unknown; captcha?: unknown }; this.captchas.check(b.captchaId, b.captcha); }
     const priced = await this.priceWithFees(this.forChannel(m!, channel), { fulfilment: req.fulfilment, location: req.location, lines: req.lines });
     if (priced.total !== req.expectedTotal) throw new HubError('PRICE_CHANGED', `The total is now Rs ${(priced.total / 100).toFixed(2)}. Please check and order again.`, 409, { total: priced.total, menuVersion: priced.menuVersion });
 
@@ -639,7 +673,7 @@ export class Hub {
       const state: OrderState = req.payment === 'COD' ? 'SENT_TO_STORE' : 'PAYMENT_PENDING';
       const order: Order = {
         id, number: `${channel === 'app' ? 'A' : 'W'}-${n}`, storeId: s.id, channel, state, fulfilment: req.fulfilment, payment: req.payment, paid: false,
-        customer: { name: req.customer.name ?? null, mobile: req.customer.mobile, verified: verified === req.customer.mobile },
+        customer: { name: req.customer.name ?? null, mobile: req.customer.mobile, verified },
         address: req.address ?? null, lines: priced.lines, note: req.note ?? null,
         itemsTotal: priced.itemsTotal, deliveryFee: priced.deliveryFee, packagingFee: priced.packagingFee, total: priced.total,
         distanceKm: priced.distanceKm, location: req.location ?? null, prepMinutes: null, etaAt: null,

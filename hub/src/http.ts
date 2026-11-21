@@ -17,6 +17,7 @@ import { Demos } from './demos.ts';
 import { Activations } from './activation.ts';
 import type { ActivateInput } from './activation.ts';
 import { productOf } from './products.ts';
+import { orderingChannel } from './settings.ts';
 import { Downloads } from './downloads.ts';
 import { DemoRequests } from './demo-requests.ts';
 import { Support } from './support.ts';
@@ -232,15 +233,44 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   const ua = (c: Ctx) => String(c.req.headers['user-agent'] ?? '');
   const signupLimit = limiter(() => 5), loginLimit = limiter(() => 10), codeLimit = limiter(() => 20);
   type B = Record<string, unknown> | null;
+  // Security checks (src/settings.ts, the admin page): the "portal" channel is the customer website, i.e. requests on the
+  // portal's address. The hub's own sign-in pages and the Windows apps' sign-in (/v1/activate) are never asked for the
+  // captcha, mobile verification or code sign-in. The captcha is checked before anything else, so a bot learns nothing
+  // (not even whether an email has an account).
+  const captchaLimit = limiter(() => 30);
+  const isPortal = (c: Ctx) => !!o.portal?.isPortalHost(c.req);
+  const wantsCaptcha = (c: Ctx) => isPortal(c) && hub.settings().checks.captcha.portal;
+  const captcha = (c: Ctx) => { if (!wantsCaptcha(c)) return; const b = c.body as B; hub.captchas.check(b?.captchaId, b?.captcha); };
+  const newCaptcha = (c: Ctx, on: boolean) => {
+    if (!on) return { enabled: false };
+    captchaLimit(c.ip);
+    const { id, image } = hub.captchas.issue();
+    return { enabled: true, id, image };
+  };
+  add('GET', '/v1/account/captcha', (c) => newCaptcha(c, wantsCaptcha(c)));
+  /** What a channel asks for: portal (on the portal's address only), app or website (food ordering). */
+  add('GET', '/v1/checks', (c) => {
+    const ch = c.query.get('channel');
+    if (ch === 'portal') return isPortal(c) ? hub.checksFor('portal') : { ...hub.checksFor('portal'), captcha: false, otp: false, mobileVerification: false };
+    return hub.checksFor(orderingChannel(ch === 'app' ? 'app' : 'website'));
+  }, { cors: true });
   add('POST', '/v1/account/signup', async (c) => {
     signupLimit(c.ip);
-    const r = await hub.accounts.signup(c.body, ua(c));
+    captcha(c);
+    const r = await hub.accounts.signup(c.body, ua(c), isPortal(c));
     if (!r.verify) { setSession(c, r.session); return { email: r.email, verify: false }; } // HUB_SKIP_EMAIL_VERIFY: signed in now
     return r;
   });
   add('POST', '/v1/account/resend', (c) => { signupLimit(c.ip); return hub.accounts.resendVerify((c.body as B)?.email); });
-  add('POST', '/v1/account/verify', (c) => { codeLimit(c.ip); const b = c.body as B; return setSession(c, hub.accounts.verifyEmail(b?.email, b?.code, ua(c))); });
-  add('POST', '/v1/account/login', async (c) => { loginLimit(c.ip); const b = c.body as B; return setSession(c, await hub.accounts.login(b?.email, b?.password, ua(c))); });
+  add('POST', '/v1/account/verify', async (c) => { codeLimit(c.ip); const b = c.body as B; return setSession(c, await hub.accounts.verifyEmail(b?.email, b?.code, ua(c), isPortal(c))); });
+  add('POST', '/v1/account/login', async (c) => { loginLimit(c.ip); captcha(c); const b = c.body as B; return setSession(c, await hub.accounts.login(b?.email, b?.password, ua(c), isPortal(c))); });
+  // mobile verification: after PHONE_NOT_VERIFIED (details.pending), the SMS code signs in
+  add('POST', '/v1/account/verify-phone', (c) => { codeLimit(c.ip); const b = c.body as B; return setSession(c, hub.accounts.verifyPhone(b?.pending, b?.code, ua(c))); });
+  add('POST', '/v1/account/resend-phone', (c) => { signupLimit(c.ip); return hub.accounts.resendPhone((c.body as B)?.pending); });
+  // sign in with an SMS code (security check "otp" for the portal), on the portal's address only
+  const portalOnly = (c: Ctx) => { if (!isPortal(c)) throw new HubError('NOT_AVAILABLE', 'Signing in with a code is not available here. Sign in with your password.', 404); };
+  add('POST', '/v1/account/code/send', (c) => { portalOnly(c); signupLimit(c.ip); captcha(c); return hub.accounts.sendSignInCode((c.body as B)?.phone); });
+  add('POST', '/v1/account/code/login', (c) => { portalOnly(c); codeLimit(c.ip); const b = c.body as B; return setSession(c, hub.accounts.signInWithCode(b?.phone, b?.code, ua(c))); });
   add('POST', '/v1/account/logout', (c) => { hub.accounts.logout(accountToken(c)); return setSession(c, null); });
   add('GET', '/v1/account/me', (c) => {
     const token = accountToken(c);
@@ -254,7 +284,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('POST', '/v1/account/sessions/:id/revoke', (c) => hub.accounts.revokeSession(accountToken(c), c.params.id));
   add('POST', '/v1/account/sessions/revoke-others', (c) => hub.accounts.revokeOtherSessions(accountToken(c)));
   add('POST', '/v1/account/forgot', (c) => { signupLimit(c.ip); return hub.accounts.forgotPassword((c.body as B)?.email); });
-  add('POST', '/v1/account/reset', async (c) => { codeLimit(c.ip); const b = c.body as B; return setSession(c, await hub.accounts.resetPassword(b?.email, b?.code, b?.password, ua(c))); });
+  add('POST', '/v1/account/reset', async (c) => { codeLimit(c.ip); const b = c.body as B; return setSession(c, await hub.accounts.resetPassword(b?.email, b?.code, b?.password, ua(c), isPortal(c))); });
   add('POST', '/v1/account/password', (c) => { loginLimit(c.ip); const b = c.body as B; return hub.accounts.changePassword(accountToken(c), b?.current, b?.password); });
   // sales analytics for the account's own outlets (src/analytics.ts); answers are kept 30 s, so the limit is generous
   const analyticsLimit = limiter(() => 120);
@@ -613,7 +643,9 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('GET', '/v1/brands/:slug', (c) => brands.publicView(c.params.slug!), { cors: true });
   add('POST', '/v1/brands/:slug/outlet', (c) => { guestLimit(c.ip); return brands.outletFor(c.params.slug!, c.body); }, { cors: true });
   add('POST', '/v1/brands/:slug/orders', async (c) => { orderLimit(c.ip); return brands.placeOrder(c.params.slug!, c.body, idem(c)); }, { cors: true });
-  add('POST', '/v1/otp/send', (c) => { otpLimit(c.ip); return hub.otpSend(String((c.body as { mobile?: string })?.mobile ?? '')); }, { cors: true });
+  // food ordering: the captcha (when on for the channel) before an SMS code or an order without one
+  add('GET', '/v1/captcha', (c) => newCaptcha(c, hub.settings().checks.captcha[orderingChannel(c.query.get('channel') === 'app' ? 'app' : 'website')]), { cors: true });
+  add('POST', '/v1/otp/send', (c) => { otpLimit(c.ip); const b = (c.body ?? {}) as { mobile?: string; channel?: unknown; captchaId?: unknown; captcha?: unknown }; return hub.otpSend(String(b.mobile ?? ''), b); }, { cors: true });
   add('POST', '/v1/otp/verify', (c) => { const b = c.body as { mobile?: string; otp?: string }; return hub.otpVerify(String(b?.mobile ?? ''), String(b?.otp ?? '')); }, { cors: true });
   add('GET', '/v1/orders/:id', (c) => hub.orderForCustomer(c.params.id!, orderToken(c)), { cors: true });
   add('POST', '/v1/orders/:id/cancel', (c) => hub.cancelByCustomer(c.params.id!, orderToken(c), (c.body as { reasonText?: string } | null)?.reasonText), { cors: true });

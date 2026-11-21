@@ -82,6 +82,7 @@ HUB_ADMIN_KEY=<long random secret> HUB_DATA_DIR=/var/lib/posinext-cloud npm star
 | `HUB_DEV_OTP=1` | Puts OTP codes in responses. **Development only.** |
 | `HUB_ROUTING_URL` | An OSRM server for real road distances. Not set: straight line × the store's road factor. Only the starting value: the admin page can change it. |
 | `HUB_ONLINE_PAYMENTS=1` | Online payment (phase 3; needs a payment gateway). |
+| `HUB_MSG91_AUTH_KEY`, `HUB_MSG91_TEMPLATE_ID` | SMS codes through MSG91 (order OTP, portal sign-in codes, mobile verification). One DLT-approved flow template for every code, e.g. `##otp## is your PosiNext code. It expires in 10 minutes.`; `HUB_MSG91_OTP_VAR` names its variable (default `otp`). Not set: no SMS is sent (codes are only logged) and the admin page cannot switch on the portal checks that send SMS. |
 
 Put it behind HTTPS: a reverse proxy such as Caddy or nginx, with response buffering off for `/v1/pos/events` and
 `/v1/orders/*/events`. The POS refuses a plain `http://` hub address unless the hub is on the same PC.
@@ -177,7 +178,32 @@ Sign up (business name, your name, email, mobile, password) → a 6-digit code b
   Permissions-Policy, and HSTS over https.
 - `HUB_SKIP_EMAIL_VERIFY=1` (for getting started before email is set up): sign-up is open without an email provider,
   needs no code and signs in at once; accounts made earlier sign in with their password. Anyone can then sign up with
-  an email that is not theirs, and "forgot password" cannot work: set up Brevo, then remove it.
+  an email that is not theirs, and "forgot password" cannot work: set up Brevo, then remove it. It is only the starting
+  value of the "Email verification" security check: the admin page can change it.
+
+### Security checks (admin page > Hub settings > Security checks)
+
+Four checks, each ticked per channel. **Customer website** is the portal on its own address (`HUB_PORTAL_DOMAIN`); the
+hub's own `/login` and `/signup` pages and the Windows apps' sign-in (`/v1/activate`) are never asked for the captcha,
+mobile verification or code sign-in. **Ordering app** and **Ordering website** are the food ordering channels (orders
+with `channel: "app"` / `"website"`). Saved in the hub database (setting `checks`), in use at once.
+
+| Check | Customer website | Ordering app / website |
+|---|---|---|
+| Captcha (src/captcha.ts) | sign-up, sign-in, code sign-in | before an SMS code (`/v1/otp/send`), and before an order not confirmed by one |
+| OTP | "Sign in with a code": an SMS code to the account's confirmed mobile signs the owner in | cash on delivery needs a mobile confirmed by an SMS code (on by default, as before) |
+| Email verification | a new account confirms its email (on by default; every customer account, on any address) | - |
+| Mobile number verification | the account's mobile is confirmed by an SMS code before its first sign-in (existing accounts at their next sign-in) | - |
+
+The portal checks that send SMS can only be switched on once MSG91 is set up. Apps and pages ask `GET /v1/checks`, or
+read `checks` on the store page, to know which steps to show.
+
+| Route | |
+|---|---|
+| `GET /v1/checks?channel=portal\|app\|website` | `{channel, captcha, otp, emailVerification, mobileVerification}` (CORS). `portal` is only true on the portal's address |
+| `GET /v1/captcha?channel=app\|website` | Food ordering: `{enabled: false}` or `{enabled: true, id, image}` (CORS). Send `{captchaId, captcha}` with `/v1/otp/send` (and `channel`) or with the order |
+| `POST /v1/account/verify-phone` · `/resend-phone` | `{pending, code}` / `{pending}`: after 403 `PHONE_NOT_VERIFIED` (`details.pending`, `details.phone` masked) from sign-up, verify, sign-in or reset |
+| `POST /v1/account/code/send` · `/code/login` | Sign in with a code (portal address only): `{phone}` (+ captcha) → always `{ok: true}`; `{phone, code}` → signed in. Only for the owner of the one account with that confirmed mobile. 404 `NOT_AVAILABLE` when off |
 - Limits per IP: sign-up, resend and forgot 5 a minute; sign-in 10; codes 20. 10 wrong passwords for one email lock it
   for 15 minutes.
 
@@ -188,6 +214,7 @@ Sign up (business name, your name, email, mobile, password) → a 6-digit code b
 | `POST /v1/account/resend` · `/forgot` | `{email}` → `{ok}` (the same answer for unknown emails) |
 | `POST /v1/account/reset` | `{email, code, password}` → sets the cookie, ends other sign-ins |
 | `POST /v1/account/login` · `/logout` | `{email, password}`; 403 `EMAIL_NOT_VERIFIED` (a new code is sent) |
+| `GET /v1/account/captcha` | `{enabled: false}`, or with the captcha security check on for the customer website, on the portal's address, `{enabled: true, id, image}` (a PNG data URL, 5 characters, 10 minutes, one try). Sign-up and sign-in on the portal's address then also need `{captchaId, captcha}`; 400 `CAPTCHA_WRONG` (`fields.captcha`). Never asked on the hub's own pages or by `/v1/activate` |
 | `GET /v1/account/me` | `{user, account, stores}` |
 | `GET /v1/account/analytics` | sales analytics for the account's outlets (see "Sales analytics for the portal") |
 | `POST /v1/account/password` | `{current, password}` |
@@ -436,7 +463,6 @@ See `docs/ONLINE_ORDERS_PLAN.md` for the failure cases (F1 to F13).
 
 ## Not built yet
 
-- SMS for OTP.
 - The payment gateway (online payment).
 - Hosting the hub (and backups of the hub database itself, including the shops' online backups).
 - The store apps (the demo page stands in for them).

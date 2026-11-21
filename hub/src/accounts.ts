@@ -4,12 +4,16 @@ import type { Db } from './db.ts';
 import { HubError } from './hub.ts';
 import { DEFAULT_PRODUCT, PRODUCTS, type ProductCode } from './products.ts';
 import type { Mailer } from './mailer.ts';
+import { fullChecks, type Checks } from './settings.ts';
+import type { SendSms } from './sms.ts';
 
 /**
  * Customer accounts (P7-01, ADR-0006): the businesses that buy DinePOS, and the people who sign in to the portal.
  * Sign up → a 6-digit code by email → verified and signed in. Passwords are scrypt-hashed (never stored or logged in
  * clear); portal sign-ins are random tokens of which only the SHA-256 is stored. A person whose email is not verified
  * never gets a session, so cannot reach the portal.
+ * Per the hub's security checks (src/settings.ts), on the portal's address: the account's mobile number is confirmed by
+ * an SMS code before the first sign-in (mobile verification), and the owner can sign in with an SMS code (otp).
  */
 
 /** A portal sign-in ends only after this long without a visit (each visit moves the end on): 400 days, the longest a
@@ -23,6 +27,8 @@ const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export type CodePurpose = 'verify' | 'reset';
+export type SmsPurpose = 'phone' | 'signin';
+const PENDING_MS = 30 * 60_000;
 export type AccountRole = 'owner' | 'admin' | 'billing';
 export interface UserRow { id: string; account_id: string; email: string; name: string; password_hash: string; role: AccountRole; verified_at: number | null; created_at: number }
 interface AccountRow { id: string; name: string; phone: string; gstin: string | null; status: string; created_at: number; products_json: string }
@@ -37,6 +43,10 @@ export interface AccountsOptions {
    * not theirs, and "forgot password" cannot work without email.
    */
   skipEmailVerify?: boolean;
+  /** The hub's security checks (read on each use, so the admin page changes them at once). Not given: skipEmailVerify only. */
+  checks?: () => Checks;
+  /** SMS codes (mobile verification, sign in with a code). Not given: codes are only logged (masked, or in full with allowLogMailer). */
+  sendSms?: SendSms;
   log?: { info(m: string, d?: unknown): void; warn(m: string, d?: unknown): void };
 }
 
@@ -99,7 +109,12 @@ export class Accounts {
   constructor(db: Db, now: () => number, o: AccountsOptions) { this.db = db; this.now = now; this.o = o; }
 
   /** False while only the development mailer is set and it is not allowed (production without email set up). */
-  get open(): boolean { return this.o.mailer.kind !== 'log' || this.o.allowLogMailer === true || this.o.skipEmailVerify === true; }
+  get open(): boolean { return this.o.mailer.kind !== 'log' || this.o.allowLogMailer === true || this.skipEmail; }
+  private checks(): Checks { return this.o.checks ? this.o.checks() : fullChecks({ emailVerification: { portal: !this.o.skipEmailVerify } }); }
+  /** Email verification switched off (security checks, or HUB_SKIP_EMAIL_VERIFY): sign-up signs in at once. */
+  private get skipEmail(): boolean { return !this.checks().emailVerification.portal; }
+  /** Mobile verification in progress: a short-lived reference to a person whose password (or email code) was right. */
+  private pending = new Map<string, { userId: string; expires: number }>();
   private needOpen() {
     if (!this.open) throw new HubError('SIGNUP_CLOSED', 'Sign-up is not open yet. Please contact us.', 503);
   }
@@ -107,7 +122,7 @@ export class Accounts {
   // ---------------------------------------------------------------- sign up, verify
 
   /** A new account. Normally an emailed code confirms it (verify: true); with skipEmailVerify it is signed in at once. */
-  async signup(input: unknown, userAgent?: string): Promise<{ email: string; verify: true } | { email: string; verify: false; session: { token: string; expiresAt: number } }> {
+  async signup(input: unknown, userAgent?: string, portal = false): Promise<{ email: string; verify: true } | { email: string; verify: false; session: { token: string; expiresAt: number } }> {
     this.needOpen();
     const b = (input ?? {}) as Record<string, unknown>;
     const businessName = checkText(b.businessName, 'businessName', 'the business name', 80);
@@ -123,11 +138,11 @@ export class Accounts {
       const accountId = randomUUID(), at = this.now();
       exec(this.db, "INSERT INTO account (id, name, phone, status, created_at, products_json) VALUES (?,?,?,'new',?,?)", accountId, businessName, phone, at, JSON.stringify(products));
       exec(this.db, "INSERT INTO account_user (id, account_id, email, name, password_hash, role, created_at, verified_at) VALUES (?,?,?,?,?,'owner',?,?)",
-        userId, accountId, email, name, passwordHash, at, this.o.skipEmailVerify ? at : null);
+        userId, accountId, email, name, passwordHash, at, this.skipEmail ? at : null);
     });
-    if (this.o.skipEmailVerify) {
-      this.o.log?.info('account signed up (email not checked: HUB_SKIP_EMAIL_VERIFY)', { email });
-      return { email, verify: false, session: this.newSession(userId, userAgent) };
+    if (this.skipEmail) {
+      this.o.log?.info('account signed up (email not checked: email verification is off)', { email });
+      return { email, verify: false, session: await this.startSession(this.userByEmail(email)!, userAgent, portal) };
     }
     this.o.log?.info('account signed up', { email });
     await this.sendCode(userId, email, 'verify');
@@ -151,19 +166,93 @@ export class Accounts {
     return { products };
   }
 
-  verifyEmail(emailIn: unknown, code: unknown, userAgent?: string) {
+  async verifyEmail(emailIn: unknown, code: unknown, userAgent?: string, portal = false) {
     const u = this.userByEmail(normEmail(emailIn));
     if (!u) throw new HubError('WRONG_CODE', 'That code is not right.', 400);
-    this.useCode(u.id, 'verify', code);
+    this.useCode('email_code', u.id, 'verify', code);
     exec(this.db, 'UPDATE account_user SET verified_at = COALESCE(verified_at, ?) WHERE id = ?', this.now(), u.id);
     this.o.log?.info('account email verified', { email: u.email });
-    return this.newSession(u.id, userAgent);
+    return this.startSession(u, userAgent, portal);
   }
 
   // ---------------------------------------------------------------- sign in, out
 
-  async login(emailIn: unknown, password: unknown, userAgent?: string) {
+  async login(emailIn: unknown, password: unknown, userAgent?: string, portal = false) {
     const u = await this.checkLogin(emailIn, password);
+    return this.startSession(u, userAgent, portal);
+  }
+
+  // ---------------------------------------------------------------- mobile verification, sign in with a code (SMS)
+
+  /**
+   * A portal sign-in once every check passed. With mobile verification on (portal address only), an account whose
+   * mobile is not confirmed gets an SMS code instead: PHONE_NOT_VERIFIED with `pending`, used by verifyPhone().
+   */
+  private async startSession(u: UserRow, userAgent: string | undefined, portal: boolean) {
+    if (portal && this.checks().mobileVerification.portal) {
+      const a = one<{ phone: string; phone_verified_at: number | null }>(this.db, 'SELECT phone, phone_verified_at FROM account WHERE id = ?', u.account_id)!;
+      if (a.phone_verified_at === null) {
+        const pending = `pv_${randomBytes(24).toString('base64url')}`;
+        this.pending.set(hash(pending), { userId: u.id, expires: this.now() + PENDING_MS });
+        await this.sendSmsCode(u.id, a.phone, 'phone', true);
+        throw new HubError('PHONE_NOT_VERIFIED', `Confirm your mobile number: we have sent a code to ${maskPhone(a.phone)}.`, 403, { pending, phone: maskPhone(a.phone) });
+      }
+    }
+    return this.newSession(u.id, userAgent);
+  }
+
+  private pendingUser(pending: unknown): UserRow {
+    const key = typeof pending === 'string' ? hash(pending) : '';
+    const p = this.pending.get(key);
+    const u = p && p.expires > this.now() ? one<UserRow>(this.db, 'SELECT * FROM account_user WHERE id = ?', p.userId) : undefined;
+    if (!u) throw new HubError('PENDING_EXPIRED', 'This step has expired. Please sign in again.', 400);
+    return u;
+  }
+
+  /** The SMS code sent by startSession(): confirms the account's mobile and signs in. */
+  verifyPhone(pending: unknown, code: unknown, userAgent?: string) {
+    const u = this.pendingUser(pending);
+    this.useCode('sms_code', u.id, 'phone', code);
+    exec(this.db, 'UPDATE account SET phone_verified_at = COALESCE(phone_verified_at, ?) WHERE id = ?', this.now(), u.account_id);
+    this.pending.delete(hash(String(pending)));
+    this.o.log?.info('account mobile verified', { email: u.email });
+    return this.newSession(u.id, userAgent);
+  }
+
+  async resendPhone(pending: unknown): Promise<{ ok: true }> {
+    const u = this.pendingUser(pending);
+    const a = one<{ phone: string }>(this.db, 'SELECT phone FROM account WHERE id = ?', u.account_id)!;
+    await this.sendSmsCode(u.id, a.phone, 'phone');
+    return { ok: true };
+  }
+
+  /** The owner of the one account with this confirmed mobile (and a confirmed email), if exactly one. */
+  private ownerByPhone(phoneIn: unknown): UserRow | undefined {
+    const phone = normalisePhone(phoneIn);
+    const rows = many<UserRow>(this.db, `SELECT u.* FROM account a JOIN account_user u ON u.account_id = a.id AND u.role = 'owner'
+      WHERE a.phone = ? AND a.phone_verified_at IS NOT NULL AND u.verified_at IS NOT NULL`, phone);
+    return rows.length === 1 ? rows[0] : undefined;
+  }
+
+  private needCodeSignIn() {
+    if (!this.checks().otp.portal) throw new HubError('NOT_AVAILABLE', 'Signing in with a code is not switched on. Sign in with your password.', 404);
+  }
+
+  /** Sign in with a code, step 1. Always answers the same, whether or not the number has an account. */
+  async sendSignInCode(phoneIn: unknown): Promise<{ ok: true }> {
+    this.needCodeSignIn();
+    const u = this.ownerByPhone(phoneIn);
+    if (u) await this.sendSmsCode(u.id, normalisePhone(phoneIn), 'signin', true);
+    return { ok: true };
+  }
+
+  /** Sign in with a code, step 2: the code proves the (confirmed) mobile, so no other check is asked. */
+  signInWithCode(phoneIn: unknown, code: unknown, userAgent?: string) {
+    this.needCodeSignIn();
+    const u = this.ownerByPhone(phoneIn);
+    if (!u) throw new HubError('WRONG_CODE', 'That code is not right.', 400);
+    this.useCode('sms_code', u.id, 'signin', code);
+    this.o.log?.info('account signed in with an SMS code', { email: u.email });
     return this.newSession(u.id, userAgent);
   }
 
@@ -182,8 +271,8 @@ export class Accounts {
       throw new HubError('BAD_LOGIN', 'The email or password is not right.', 401);
     }
     this.loginFails.delete(email);
-    if (u.verified_at === null && this.o.skipEmailVerify) {
-      // made before HUB_SKIP_EMAIL_VERIFY was set: the right password is enough now
+    if (u.verified_at === null && this.skipEmail) {
+      // made while email verification was on: the right password is enough now
       exec(this.db, 'UPDATE account_user SET verified_at = ? WHERE id = ?', now, u.id);
       u.verified_at = now;
     }
@@ -265,11 +354,11 @@ export class Accounts {
   }
 
   /** A new password with the emailed code. Ends every sign-in of that person, then signs them in here. */
-  async resetPassword(emailIn: unknown, code: unknown, password: unknown, userAgent?: string) {
+  async resetPassword(emailIn: unknown, code: unknown, password: unknown, userAgent?: string, portal = false) {
     const pw = checkNewPassword(password);
     const u = this.userByEmail(normEmail(emailIn));
     if (!u) throw new HubError('WRONG_CODE', 'That code is not right.', 400);
-    this.useCode(u.id, 'reset', code);
+    this.useCode('email_code', u.id, 'reset', code);
     const h = await hashPassword(pw);
     tx(this.db, () => {
       // the code reached their inbox, so the email is theirs
@@ -278,7 +367,7 @@ export class Accounts {
     });
     this.loginFails.delete(u.email);
     this.o.log?.info('account password reset', { email: u.email });
-    return this.newSession(u.id, userAgent);
+    return this.startSession(u, userAgent, portal);
   }
 
   /** Change the password while signed in; other sign-ins of this person end, this one stays. */
@@ -313,6 +402,8 @@ export class Accounts {
     const now = this.now();
     exec(this.db, 'DELETE FROM account_session WHERE expires_at < ?', now);
     exec(this.db, 'DELETE FROM email_code WHERE expires_at < ? AND window_start < ?', now, now - 3_600_000);
+    exec(this.db, 'DELETE FROM sms_code WHERE expires_at < ? AND window_start < ?', now, now - 3_600_000);
+    for (const [k, p] of this.pending) if (p.expires <= now) this.pending.delete(k);
     for (const [k, f] of this.loginFails) if (now - f.start > LOGIN_WINDOW_MS) this.loginFails.delete(k);
   }
 
@@ -327,19 +418,43 @@ export class Accounts {
   }
 
   /** A new code replaces the last one (and its wrong tries). At most 5 sent per hour per person and purpose. */
-  private async sendCode(userId: string, email: string, purpose: CodePurpose, quietWhenLimited = false) {
+  /** A new code in `table` (email_code or sms_code); null when the hourly limit is reached and quietWhenLimited. */
+  private newCode(table: 'email_code' | 'sms_code', userId: string, purpose: CodePurpose | SmsPurpose, quietWhenLimited: boolean): string | null {
     const now = this.now();
-    const row = one<{ sends: number; window_start: number }>(this.db, 'SELECT sends, window_start FROM email_code WHERE user_id = ? AND purpose = ?', userId, purpose);
+    const row = one<{ sends: number; window_start: number }>(this.db, `SELECT sends, window_start FROM ${table} WHERE user_id = ? AND purpose = ?`, userId, purpose);
     const fresh = !row || now - row.window_start > 3_600_000;
     if (!fresh && row.sends >= SENDS_PER_HOUR) {
-      if (quietWhenLimited) return;
+      if (quietWhenLimited) return null;
       throw new HubError('TOO_MANY_REQUESTS', 'Too many codes sent. Wait an hour and try again.', 429);
     }
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-    exec(this.db, `INSERT INTO email_code (user_id, purpose, code_hash, expires_at, attempts, sends, window_start) VALUES (?,?,?,?,0,1,?)
+    exec(this.db, `INSERT INTO ${table} (user_id, purpose, code_hash, expires_at, attempts, sends, window_start) VALUES (?,?,?,?,0,1,?)
       ON CONFLICT(user_id, purpose) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
-        sends = CASE WHEN ? THEN 1 ELSE email_code.sends + 1 END, window_start = CASE WHEN ? THEN excluded.window_start ELSE email_code.window_start END`,
+        sends = CASE WHEN ? THEN 1 ELSE ${table}.sends + 1 END, window_start = CASE WHEN ? THEN excluded.window_start ELSE ${table}.window_start END`,
     userId, purpose, codeHash(userId, purpose, code), now + CODE_MS, now, fresh ? 1 : 0, fresh ? 1 : 0);
+    return code;
+  }
+
+  /** An SMS code to the account's mobile (same limits as email codes). */
+  private async sendSmsCode(userId: string, phone: string, purpose: SmsPurpose, quietWhenLimited = false) {
+    const code = this.newCode('sms_code', userId, purpose, quietWhenLimited);
+    if (code === null) return;
+    const text = `${code} is your PosiNext code. It expires in 10 minutes. Do not share it with anyone.`;
+    if (!this.o.sendSms) {
+      this.o.log?.info('SMS code (no SMS provider set up)', { phone: maskPhone(phone), text: this.o.allowLogMailer ? text : text.replace(/\d{6}/, '******') });
+      return;
+    }
+    try {
+      await this.o.sendSms(phone, text, code);
+    } catch (e) {
+      this.o.log?.warn('SMS not sent', { phone: maskPhone(phone), error: String(e) });
+      throw new HubError('SMS_FAILED', 'We could not send the SMS. Please try again in a minute.', 502);
+    }
+  }
+
+  private async sendCode(userId: string, email: string, purpose: CodePurpose, quietWhenLimited = false) {
+    const code = this.newCode('email_code', userId, purpose, quietWhenLimited);
+    if (code === null) return;
     const text = purpose === 'verify'
       ? `Your PosiNext verification code is ${code}.\n\nIt works for 10 minutes. If you did not sign up for PosiNext, ignore this email.`
       : `Your PosiNext password reset code is ${code}.\n\nIt works for 10 minutes. If you did not ask to reset your password, ignore this email: your password stays the same.`;
@@ -352,23 +467,25 @@ export class Accounts {
   }
 
   /** Checks a code; each wrong try counts (kept even though the request fails), and after 5 the code is locked. */
-  private useCode(userId: string, purpose: CodePurpose, codeIn: unknown) {
+  private useCode(table: 'email_code' | 'sms_code', userId: string, purpose: CodePurpose | SmsPurpose, codeIn: unknown) {
     const code = String(codeIn ?? '').replace(/\D/g, '');
-    const row = one<{ code_hash: string; expires_at: number; attempts: number }>(this.db, 'SELECT code_hash, expires_at, attempts FROM email_code WHERE user_id = ? AND purpose = ?', userId, purpose);
+    const row = one<{ code_hash: string; expires_at: number; attempts: number }>(this.db, `SELECT code_hash, expires_at, attempts FROM ${table} WHERE user_id = ? AND purpose = ?`, userId, purpose);
     if (!row || !row.code_hash || row.expires_at < this.now()) throw new HubError('CODE_EXPIRED', 'This code has expired. Ask for a new one.', 400);
     if (row.attempts >= CODE_ATTEMPTS) throw new HubError('CODE_LOCKED', 'Too many wrong codes. Ask for a new code.', 429);
     const got = Buffer.from(codeHash(userId, purpose, code)), want = Buffer.from(row.code_hash);
     if (code.length !== 6 || got.length !== want.length || !timingSafeEqual(got, want)) {
-      exec(this.db, 'UPDATE email_code SET attempts = attempts + 1 WHERE user_id = ? AND purpose = ?', userId, purpose);
+      exec(this.db, `UPDATE ${table} SET attempts = attempts + 1 WHERE user_id = ? AND purpose = ?`, userId, purpose);
       const left = CODE_ATTEMPTS - row.attempts - 1;
       throw new HubError(left > 0 ? 'WRONG_CODE' : 'CODE_LOCKED', left > 0 ? `That code is not right. ${left} ${left === 1 ? 'try' : 'tries'} left.` : 'Too many wrong codes. Ask for a new code.', left > 0 ? 400 : 429);
     }
     // used: the code cannot be used again (the send count for the hour stays)
-    exec(this.db, "UPDATE email_code SET code_hash = '', expires_at = 0 WHERE user_id = ? AND purpose = ?", userId, purpose);
+    exec(this.db, `UPDATE ${table} SET code_hash = '', expires_at = 0 WHERE user_id = ? AND purpose = ?`, userId, purpose);
   }
 }
 
 const codeHash = (userId: string, purpose: string, code: string) => hash(`email-code:${purpose}:${userId}:${code}`);
+/** +91******3210: enough to recognise one's own number, not to learn someone else's. */
+export const maskPhone = (p: string) => (p.length > 6 ? `${p.slice(0, 3)}******${p.slice(-4)}` : '******');
 
 /** P8-06: one or both products, each once, in a fixed order. */
 function checkProducts(value: unknown): ProductCode[] {
