@@ -85,7 +85,7 @@ test('hub admin: settings are checked, saved in the database, used at once and k
   try {
     const before = (await h.call('GET', '/v1/admin/overview', { admin: true })).json.settings;
     const { checks: _checks, ...plain } = before; // the security checks: test/security-checks.test.ts
-    assert.deepEqual(plain, { routingUrl: '', offlineAfterSec: 60, pairingCodeMinutes: 30, otpPerMinute: 5, ordersPerMinute: 20, pairPerMinute: 10 });
+    assert.deepEqual(plain, { routingUrl: '', offlineAfterSec: 60, pairingCodeMinutes: 30, otpPerMinute: 5, ordersPerMinute: 20, pairPerMinute: 10, showOtpCodes: false });
     const bad = await h.call('PUT', '/v1/admin/settings', { admin: true, body: { routingUrl: 'ftp://x', offlineAfterSec: 1 } });
     assert.equal(bad.status, 400);
     assert.deepEqual(Object.keys(bad.json.error.details.fields).sort(), ['offlineAfterSec', 'routingUrl']);

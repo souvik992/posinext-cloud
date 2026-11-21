@@ -2,7 +2,7 @@
  * Hub settings the admin page can change while the hub runs. Saved in the hub database (table `setting`); a setting
  * never saved uses its default (from the environment where one exists, e.g. HUB_ROUTING_URL).
  * Not here on purpose: HUB_ONLINE_PAYMENTS (online payment needs a payment gateway). HUB_DEV_OTP (OTP codes shown on
- * screen everywhere) stays environment-only; per ordering channel the admin can switch on demo mode (below), which
+ * screen everywhere) can also be switched on here (showOtpCodes); per ordering channel the admin can switch on demo mode (below), which
  * shows that channel's OTP codes on screen: with it on, a customer's mobile is not really checked.
  */
 
@@ -66,11 +66,16 @@ export interface HubSettings {
   pairPerMinute: number;
   /** Captcha, OTP, email and mobile verification per channel (above). */
   checks: Checks;
+  /**
+   * Show OTP codes on screen on every ordering channel (the admin page's switch), as HUB_DEV_OTP=1 does; HUB_DEV_OTP
+   * keeps it on whatever this says. For development and demos: customers' mobiles are then not really checked.
+   */
+  showOtpCodes: boolean;
 }
 
-export const SETTING_DEFAULTS: HubSettings = { routingUrl: '', offlineAfterSec: 60, pairingCodeMinutes: 30, otpPerMinute: 5, ordersPerMinute: 20, pairPerMinute: 10, checks: DEFAULT_CHECKS };
+export const SETTING_DEFAULTS: HubSettings = { routingUrl: '', offlineAfterSec: 60, pairingCodeMinutes: 30, otpPerMinute: 5, ordersPerMinute: 20, pairPerMinute: 10, checks: DEFAULT_CHECKS, showOtpCodes: false };
 
-const RANGES: Record<Exclude<keyof HubSettings, 'routingUrl' | 'checks'>, [number, number, string]> = {
+const RANGES: Record<Exclude<keyof HubSettings, 'routingUrl' | 'checks' | 'showOtpCodes'>, [number, number, string]> = {
   offlineAfterSec: [15, 3600, 'Offline after must be 15 to 3600 seconds.'],
   pairingCodeMinutes: [5, 1440, 'Pairing codes must be valid 5 to 1440 minutes.'],
   otpPerMinute: [1, 100, 'OTP requests must be 1 to 100 per minute.'],
@@ -105,6 +110,9 @@ export function checkSettings(input: unknown): { ok: true; value: Omit<Partial<H
         }
       }
       value.checks = checks;
+    } else if (k === 'showOtpCodes') {
+      if (typeof v !== 'boolean') errors[k] = 'Must be true or false.';
+      else value.showOtpCodes = v;
     } else if (k in RANGES) {
       const [min, max, msg] = RANGES[k as keyof typeof RANGES];
       if (!Number.isInteger(v) || (v as number) < min || (v as number) > max) errors[k] = msg;

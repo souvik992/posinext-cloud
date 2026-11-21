@@ -82,7 +82,7 @@ HUB_ADMIN_KEY=<long random secret> HUB_DATA_DIR=/var/lib/posinext-cloud npm star
 | `HUB_DEV_OTP=1` | Puts OTP codes in responses. **Development only.** |
 | `HUB_ROUTING_URL` | An OSRM server for real road distances. Not set: straight line × the store's road factor. Only the starting value: the admin page can change it. |
 | `HUB_ONLINE_PAYMENTS=1` | Online payment (phase 3; needs a payment gateway). |
-| `HUB_MSG91_AUTH_KEY`, `HUB_MSG91_TEMPLATE_ID` | SMS codes through MSG91 (order OTP, portal sign-in codes, mobile verification). One DLT-approved flow template for every code, e.g. `##otp## is your PosiNext code. It expires in 10 minutes.`; `HUB_MSG91_OTP_VAR` names its variable (default `otp`). Not set: no SMS is sent (codes are only logged) and the admin page cannot switch on the portal checks that send SMS. |
+| `HUB_MSG91_AUTH_KEY`, `HUB_MSG91_TEMPLATE_ID` | Optional: MSG91 can instead be set up on the admin page (Hub settings > SMS codes), which also sends a test SMS; these, when set, win. SMS codes through MSG91 (order OTP, portal sign-in codes, mobile verification). One DLT-approved flow template for every code, e.g. `##otp## is your PosiNext code. It expires in 10 minutes.`; `HUB_MSG91_OTP_VAR` names its variable (default `otp`). Not set: no SMS is sent (codes are only logged) and the admin page cannot switch on the portal checks that send SMS. |
 
 Put it behind HTTPS: a reverse proxy such as Caddy or nginx, with response buffering off for `/v1/pos/events` and
 `/v1/orders/*/events`. The POS refuses a plain `http://` hub address unless the hub is on the same PC.

@@ -407,6 +407,10 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('GET', '/v1/admin/orders', (c) => { admin(c); return hub.adminOrders({ slug: c.query.get('store') || undefined, status: c.query.get('status') ?? 'all', limit: Number(c.query.get('limit') ?? 100) }); });
   add('GET', '/v1/admin/overview', (c) => { admin(c); return hub.adminOverview(); });
   add('PUT', '/v1/admin/settings', (c) => { admin(c); return { settings: hub.saveSettings(c.body) }; });
+  add('GET', '/v1/admin/sms', (c) => { admin(c); return hub.smsSetup(); });
+  add('PUT', '/v1/admin/sms', (c) => { admin(c); return hub.saveSmsSetup(c.body); });
+  add('DELETE', '/v1/admin/sms', (c) => { admin(c); return hub.removeSmsSetup(); });
+  add('POST', '/v1/admin/sms/test', (c) => { admin(c); return hub.testSms((c.body as { mobile?: unknown } | null)?.mobile); });
   add('PUT', '/v1/admin/stores/:slug/pause', (c) => { admin(c); const b = (c.body ?? {}) as { paused?: unknown; reason?: unknown }; return hub.pauseStore(c.params.slug!, b.paused === true, b.reason); });
   add('GET', '/v1/admin/stores/:slug/sales', (c) => { admin(c); return hub.sync.sales(hub.store({ slug: c.params.slug! }).id, Number(c.query.get('days') ?? 14)); });
   add('GET', '/v1/admin/stores/:slug/licence', (c) => { admin(c); return hub.sync.licenceInfo(hub.store({ slug: c.params.slug! }).id); });

@@ -232,3 +232,26 @@ test('demo mode: per ordering channel, the OTP code is shown on screen (as HUB_D
     assert.throws(() => hub.saveSettings({ checks: { demoMode: { portal: true } } }), { code: 'VALIDATION' });
   } finally { hub.close(); cleanup(dir); }
 });
+
+test('show OTP codes on screen: the admin switch works like HUB_DEV_OTP on every ordering channel; HUB_DEV_OTP keeps it on', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'hub-devotp-'));
+  const hub = new Hub({ dbPath: join(dir, 'hub.db'), sendSms: async () => undefined });
+  try {
+    assert.equal((await hub.otpSend('9876543210', { channel: 'website' })).devCode, undefined);
+    assert.deepEqual([hub.adminOverview().hub.devOtp, hub.adminOverview().hub.devOtpEnv], [false, false]);
+    assert.throws(() => hub.saveSettings({ showOtpCodes: 'yes' }), { code: 'VALIDATION' });
+    hub.saveSettings({ showOtpCodes: true });
+    assert.match(String((await hub.otpSend('9876543211', { channel: 'website' })).devCode), /^\d{6}$/);
+    assert.match(String((await hub.otpSend('9876543212', { channel: 'app' })).devCode), /^\d{6}$/);
+    assert.equal(hub.adminOverview().hub.devOtp, true);
+    hub.saveSettings({ showOtpCodes: false });
+    assert.equal((await hub.otpSend('9876543213', { channel: 'app' })).devCode, undefined);
+  } finally { hub.close(); cleanup(dir); }
+  const dir2 = mkdtempSync(join(tmpdir(), 'hub-devotp-'));
+  const env = new Hub({ dbPath: join(dir2, 'hub.db'), devOtp: true });
+  try {
+    env.saveSettings({ showOtpCodes: false });
+    assert.deepEqual([env.adminOverview().hub.devOtp, env.adminOverview().hub.devOtpEnv], [true, true]);
+    assert.ok((await env.otpSend('9876543210', { channel: 'website' })).devCode);
+  } finally { env.close(); cleanup(dir2); }
+});

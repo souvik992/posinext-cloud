@@ -215,6 +215,8 @@
         <div class="actions"><button class="primary" type="submit">Save settings</button><span id="settingsSaved" class="muted"></span></div>
       </form>
     </div>
+    <h2>SMS codes (MSG91)</h2>
+    <div class="card" id="smsCard"></div>
     <h2>Security checks</h2>
     <div class="card">
       <form id="checksForm">
@@ -229,7 +231,7 @@
     <div id="upAccount"></div>
     <h2>Set when the hub starts</h2>
     <div class="card" id="fixed"></div>
-    <p class="muted">These change only by restarting the hub with different environment variables (see hub/README.md), so the admin key alone can never switch them on.</p>
+    <p class="muted">Except the OTP switch, these change only by restarting the hub with different environment variables (see hub/README.md), so the admin key alone can never switch them on.</p>
   </section>
 </main>
 <script>
@@ -237,7 +239,7 @@
   const $ = (id) => document.getElementById(id);
   const keyStore = { get: () => { try { return sessionStorage.getItem('hubAdminKey') || ''; } catch { return ''; } },
     set: (v) => { try { v ? sessionStorage.setItem('hubAdminKey', v) : sessionStorage.removeItem('hubAdminKey'); } catch { /* private window */ } } };
-  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false;
+  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false, smsDirty = false, smsLoaded = false;
   let health = null; // GET /health/deep: hosted outlets down, backups failing
   const ui = { orderStore: '', orderStatus: 'open', expanded: new Set(), links: new Map(), pausing: false, up: new Map(), licence: new Map(), sitePasswords: new Map() };
 
@@ -329,6 +331,7 @@
       else if (r.tab === 'brands' && !(document.activeElement && document.activeElement.closest('#brands'))) await renderBrands();
       if (!settingsDirty) fillSettings();
       if (!checksDirty) fillChecks();
+      if (!smsLoaded) { smsLoaded = true; fillSms(); } // then only after a change here, so typing and messages are kept
       if (r.tab === 'settings' && !(document.activeElement && document.activeElement.closest('#upAccount'))) await renderAccount();
       for (const el of document.querySelectorAll('[data-updated]')) el.textContent = `Updated ${new Date().toLocaleTimeString('en-IN')}`;
     } catch (e) { for (const el of document.querySelectorAll('[data-updated]')) el.textContent = e.message; }
@@ -336,7 +339,7 @@
 
   function renderWarnings() {
     const hub = overview.hub;
-    $('hubWarn').replaceChildren(...(hub.devOtp ? [h('div', { class: 'banner' }, 'OTP codes are shown to customers (HUB_DEV_OTP=1). Use this only for development and testing.')] : []),
+    $('hubWarn').replaceChildren(...(hub.devOtp ? [h('div', { class: 'banner' }, hub.devOtpEnv ? 'OTP codes are shown to customers (HUB_DEV_OTP=1 on the server). Use this only for development and testing.' : 'OTP codes are shown to customers (Hub settings > Show OTP codes on screen). Use this only for development and testing.')] : []),
       ...(!hub.smsProvider ? [h('div', { class: 'banner info' }, 'No SMS provider is set up yet: customers cannot receive OTP codes by SMS.')] : []),
       ...(health && !health.ok ? health.problems.map((p) => h('div', { class: 'banner' }, p)) : []),
       ...(health && health.backup && health.backup.ok && !health.backup.offsite ? [h('div', { class: 'banner info' }, 'Backups stay on this server only. Set HUB_S3_BUCKET in /etc/posinext-cloud.env (and give the server an S3 role) to copy them off it every hour.')] : []));
@@ -921,10 +924,21 @@
     for (const f of FIELDS) $(f).value = overview.settings[f];
     const hub = overview.hub;
     $('fixed').replaceChildren(
-      kv('Show OTP codes on screen (HUB_DEV_OTP)', hub.devOtp ? chip('warn', 'On: development only') : chip('ok', 'Off')),
+      kv('Show OTP codes on screen (every ordering channel)', otpToggle(hub)),
       kv('Online payment (HUB_ONLINE_PAYMENTS)', chip('warn', hub.onlinePayments ? 'On' : 'Off: needs a payment gateway')),
-      kv('SMS provider for codes (HUB_MSG91_AUTH_KEY, HUB_MSG91_TEMPLATE_ID)', hub.smsProvider ? chip('ok', 'MSG91 set up') : chip('warn', 'Not set up: codes are only logged')),
       hub.routingOverridden ? kv('Road routing', chip('warn', 'Fixed by the hub program; the setting above is ignored')) : '');
+  }
+  // OTP codes on screen: a switch (settings.showOtpCodes); HUB_DEV_OTP=1 on the server keeps it on
+  function otpToggle(hub) {
+    if (hub.devOtpEnv) return h('span', { class: 'row', style: 'align-items:center;gap:8px' }, chip('warn', 'On'), h('span', { class: 'muted' }, 'kept on by HUB_DEV_OTP=1 on the server'));
+    const box = h('input', { type: 'checkbox', checked: hub.devOtp, 'aria-label': 'Show OTP codes on screen', onchange: async () => {
+      const on = box.checked;
+      if (on && !confirm('Show OTP codes on screen on every ordering channel?\n\nAnyone can then order with any mobile number: it is not really checked. Use it only for development, testing and demos.')) { box.checked = false; return; }
+      box.disabled = true;
+      try { const { settings } = await api('PUT', '/v1/admin/settings', { showOtpCodes: on }); overview.settings = settings; await refresh(); }
+      catch (e) { box.checked = !on; alert(e.message); } finally { box.disabled = false; }
+    } });
+    return h('label', { class: 'row', style: 'align-items:center;gap:8px;cursor:pointer;margin:0' }, box, hub.devOtp ? chip('warn', 'On: development only') : chip('ok', 'Off'));
   }
   $('settingsForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -960,7 +974,7 @@
             // SMS checks on the website need an SMS provider (ordering OTP was on before, so it stays changeable)
             disabled: ck.sms && ch === 'portal' && !smsReady && !c[ck.key][ch] })
         : h('span', { class: 'na', title: 'Does not apply to this channel' }, '—'))))));
-    $('checksSms').textContent = smsReady ? '' : 'No SMS provider is set up: the website boxes that send SMS codes stay off until MSG91 is set up (HUB_MSG91_AUTH_KEY, HUB_MSG91_TEMPLATE_ID). Ordering OTP codes are only written to the hub log.';
+    $('checksSms').textContent = smsReady ? '' : 'No SMS provider is set up: the website boxes that send SMS codes stay off until MSG91 is set up (SMS codes, above). Ordering OTP codes are only written to the hub log.';
   }
   $('checksForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -975,6 +989,54 @@
       $('checksErr').textContent = e.fields ? Object.values(e.fields).join(' ') : e.message;
     }
   });
+
+  // ------------------------------------------------------------ SMS codes (MSG91)
+  const smsMsg = (text, ok) => $('smsMsg').replaceChildren(text ? h('div', { class: ok ? 'box' : 'err' }, text) : '');
+  async function fillSms() {
+    let s;
+    try { s = await api('GET', '/v1/admin/sms'); } catch (e) { $('smsCard').replaceChildren(h('div', { class: 'err' }, e.message)); return; }
+    if (smsDirty) return;
+    const field = (id, label, input, hint) => h('div', {}, h('label', { for: id }, label), input, hint ? h('div', { class: 'hint' }, hint) : null, h('div', { class: 'err', 'data-sms-err': id }));
+    const test = h('form', { class: 'row', style: 'margin-top:14px;align-items:flex-end', onsubmit: async (ev) => {
+        ev.preventDefault(); smsMsg('');
+        const btn = ev.target.querySelector('button'); btn.disabled = true;
+        try { const r = await api('POST', '/v1/admin/sms/test', { mobile: $('smsTestMobile').value }); smsMsg(`Sent. The SMS should arrive in a minute with the code ${r.code}.`, true); }
+        catch (e) { smsMsg(e.message); } finally { btn.disabled = false; }
+      } },
+      h('div', {}, h('label', { for: 'smsTestMobile' }, 'Send a test SMS to'), h('input', { id: 'smsTestMobile', inputmode: 'numeric', placeholder: '9876543210', oninput: (e) => { let d = e.target.value.replace(/\D/g, ''); if (d.length > 10) d = d.replace(/^(0091|91|0)/, ''); e.target.value = d.slice(0, 10); } })),
+      h('button', { type: 'submit' }, 'Send test SMS'));
+    if (s.source === 'server') {
+      $('smsCard').replaceChildren(h('p', {}, chip('ok', 'MSG91 set up on the server'), ' '),
+        h('div', { class: 'hint' }, 'Set by HUB_MSG91_AUTH_KEY and HUB_MSG91_TEMPLATE_ID in /etc/posinext-cloud.env, so it is changed there (then restart the hub). Remove those lines to set it up here instead.'),
+        test, h('div', { id: 'smsMsg' }));
+      return;
+    }
+    const form = h('form', { oninput: () => { smsDirty = true; }, onsubmit: async (ev) => {
+        ev.preventDefault(); smsMsg('');
+        for (const el of document.querySelectorAll('[data-sms-err]')) el.textContent = '';
+        try {
+          await api('PUT', '/v1/admin/sms', { authKey: $('smsKey').value, templateId: $('smsTemplate').value, otpVar: $('smsVar').value });
+          await refresh(); smsDirty = false; await fillSms(); smsMsg('Saved. SMS codes go through MSG91 now: send a test SMS to check.', true);
+        } catch (e) {
+          if (e.fields) for (const [k, m] of Object.entries(e.fields)) { const el = document.querySelector(`[data-sms-err="${({ authKey: 'smsKey', templateId: 'smsTemplate', otpVar: 'smsVar' })[k] || k}"]`); if (el) el.textContent = m; }
+          else smsMsg(e.message);
+        }
+      } },
+      h('div', { class: 'hint', style: 'margin:0 0 10px' }, 'Every SMS code the hub sends (order OTP, website sign-in codes, mobile verification) uses one DLT-approved MSG91 template, e.g. "##otp## is your PosiNext code. It expires in 10 minutes."'),
+      h('div', { class: 'grid' },
+        field('smsKey', 'Auth key', h('input', { id: 'smsKey', type: 'password', autocomplete: 'off', placeholder: s.configured ? `Saved, ending ${s.authKeyEnding}: leave empty to keep` : 'MSG91 > API > Auth key' })),
+        field('smsTemplate', 'Template id', h('input', { id: 'smsTemplate', value: s.templateId || '', placeholder: 'MSG91 > SMS > Templates' })),
+        field('smsVar', 'Code variable', h('input', { id: 'smsVar', value: s.otpVar || 'otp', placeholder: 'otp' }), 'The name between ## in the template.')),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', type: 'submit' }, s.configured ? 'Save changes' : 'Save and use MSG91'),
+        s.configured ? h('button', { type: 'button', class: 'danger', onclick: async () => {
+          if (!confirm('Remove the MSG91 details? SMS codes are then only written to the hub log.')) return;
+          try { await api('DELETE', '/v1/admin/sms'); await refresh(); smsDirty = false; await fillSms(); smsMsg('Removed.', true); } catch (e) { smsMsg(e.message); }
+        } }, 'Remove') : null,
+        h('span', { class: 'muted' }, s.configured ? chip('ok', 'Set up') : chip('warn', 'Not set up: codes are only logged'))),
+      h('div', { class: 'hint' }, 'The auth key is kept in the hub database (and its backups); only its last 4 characters are shown here.'));
+    $('smsCard').replaceChildren(form, s.configured ? test : null, h('div', { id: 'smsMsg' }));
+  }
 
   // ------------------------------------------------------------ start
   $('signout').addEventListener('click', (e) => { e.preventDefault(); signOut(); });

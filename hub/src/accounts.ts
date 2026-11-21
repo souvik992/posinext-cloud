@@ -47,6 +47,8 @@ export interface AccountsOptions {
   checks?: () => Checks;
   /** SMS codes (mobile verification, sign in with a code). Not given: codes are only logged (masked, or in full with allowLogMailer). */
   sendSms?: SendSms;
+  /** The SMS sender in use now (the admin page can set MSG91 up while the hub runs); wins over sendSms. */
+  sms?: () => SendSms | undefined;
   log?: { info(m: string, d?: unknown): void; warn(m: string, d?: unknown): void };
 }
 
@@ -442,12 +444,13 @@ export class Accounts {
     const code = this.newCode('sms_code', userId, purpose, quietWhenLimited);
     if (code === null) return;
     const text = `${code} is your PosiNext code. It expires in 10 minutes. Do not share it with anyone.`;
-    if (!this.o.sendSms) {
+    const send = this.o.sms ? this.o.sms() : this.o.sendSms;
+    if (!send) {
       this.o.log?.info('SMS code (no SMS provider set up)', { phone: maskPhone(phone), text: this.o.allowLogMailer ? text : text.replace(/\d{6}/, '******') });
       return;
     }
     try {
-      await this.o.sendSms(phone, text, code);
+      await send(phone, text, code);
     } catch (e) {
       this.o.log?.warn('SMS not sent', { phone: maskPhone(phone), error: String(e) });
       throw new HubError('SMS_FAILED', 'We could not send the SMS. Please try again in a minute.', 502);

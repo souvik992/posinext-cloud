@@ -11,7 +11,9 @@ import { one } from '../src/db.ts';
 
 const dir = process.env.HUB_DATA_DIR ?? join(import.meta.dirname, '..', 'hub-data');
 mkdirSync(dir, { recursive: true });
-const hub = new Hub({ dbPath: join(dir, 'hub.db'), devOtp: true, allowLogMailer: true, log: { info: (m, d) => console.log(m, d ?? ''), warn: (m, d) => console.warn(m, d ?? '') } });
+const hub = new Hub({ dbPath: join(dir, 'hub.db'), allowLogMailer: true, log: { info: (m, d) => console.log(m, d ?? ''), warn: (m, d) => console.warn(m, d ?? '') } });
+// OTP codes on screen: on by default here, through the admin switch (Hub settings), so it can be turned off to try
+if (!one(hub.db, "SELECT 1 FROM setting WHERE key = 'showOtpCodes'")) hub.saveSettings({ showOtpCodes: true });
 const port = Number(process.env.HUB_PORT ?? 4900);
 const adminKey = process.env.HUB_ADMIN_KEY ?? randomBytes(12).toString('base64url'); // a new one each run unless set
 const urbanpiper = new UrbanPiper(hub, { log: { info: (m, d) => console.log(m, d ?? ''), warn: (m, d) => console.warn(m, d ?? '') } });

@@ -76,7 +76,7 @@
       <label for="su-name">Your name</label><input id="su-name" name="name" autocomplete="name" maxlength="80" required><div class="field-err" data-for="name"></div>
       <div class="two">
         <div><label for="su-email">Email</label><input id="su-email" name="email" type="email" autocomplete="email" required><div class="field-err" data-for="email"></div></div>
-        <div><label for="su-phone">Mobile</label><input id="su-phone" name="phone" type="tel" autocomplete="tel" placeholder="98765 43210" required><div class="field-err" data-for="phone"></div></div>
+        <div><label for="su-phone">Mobile</label><input id="su-phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="9876543210" required><div class="field-err" data-for="phone"></div></div>
       </div>
       <label for="su-password">Password</label><input id="su-password" name="password" type="password" autocomplete="new-password" minlength="8" required><div class="field-err" data-for="password"></div>
       <div class="err" data-err></div>
@@ -282,6 +282,9 @@
   for (const a of document.querySelectorAll('a[href^="/"]')) a.addEventListener('click', (ev) => { const v = VIEWS[a.getAttribute('href')]; if (!v) return; ev.preventDefault(); history.pushState({}, '', a.getAttribute('href')); start(); });
   start();
 })();
+  // mobile fields keep 10 digits; a pasted "+91 98765 43210" or "098765 43210" loses its 91 / 0 prefix first
+  const mobileDigits = (v) => { let d = v.replace(/\D/g, ''); if (d.length > 10) d = d.replace(/^(0091|91|0)/, ''); return d.slice(0, 10); };
+  document.addEventListener('input', (e) => { if (e.target.id === 'su-phone') e.target.value = mobileDigits(e.target.value); }); // the field may be drawn later
 </script>
 </body>
 </html>

@@ -149,7 +149,7 @@ function checkout() {
     <div class="card">
       <label>Name (optional)</label><input id="cname" autocomplete="name">
       <div id="capBox" hidden><label>Type the characters you see</label><div class="row"><img id="capImg" alt="Picture of 5 characters to type" width="180" height="60" style="border-radius:8px;border:1px solid #ddd"><button class="ghost" id="capNew" type="button">New picture</button></div><input id="cap" maxlength="12" autocomplete="off" style="text-transform:uppercase"></div>
-      <label>Mobile number</label><div class="row"><input id="mobile" inputmode="numeric" maxlength="14" autocomplete="tel"><button class="ghost" id="sendOtp">Send code</button></div>
+      <label>Mobile number</label><div class="row"><input id="mobile" inputmode="numeric" autocomplete="tel-national" placeholder="9876543210"><button class="ghost" id="sendOtp">Send code</button></div>
       <div id="otpBox" hidden><label>Code from SMS</label><div class="row"><input id="otp" inputmode="numeric" maxlength="6"><button class="ghost" id="verify">Verify</button></div><div class="muted" id="devOtp"></div></div>
       <div id="otpOk" class="ok" hidden>Mobile verified</div>
       <label>Note for the store (optional)</label><textarea id="note" rows="2" maxlength="300"></textarea>
@@ -234,6 +234,9 @@ function track(order, token) {
   es.addEventListener('order.state', (e) => { const d = JSON.parse(e.data); if (d.order) draw(d.order); });
 }
 (BRAND ? loadBrand() : load()).catch((e) => { $('#app').innerHTML = `<div class="banner">${esc(e.message)}</div>`; });
+  // mobile fields keep 10 digits; a pasted "+91 98765 43210" or "098765 43210" loses its 91 / 0 prefix first
+  const mobileDigits = (v) => { let d = v.replace(/\D/g, ''); if (d.length > 10) d = d.replace(/^(0091|91|0)/, ''); return d.slice(0, 10); };
+  document.addEventListener('input', (e) => { if (e.target.id === 'mobile') e.target.value = mobileDigits(e.target.value); }); // the field may be drawn later
 </script>
 </body>
 </html>

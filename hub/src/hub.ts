@@ -18,6 +18,7 @@ import type { PublishedMenu } from '../../contract/src/menu.ts';
 import { checkSettings, fullChecks, orderingChannel, SETTING_DEFAULTS, SMS_CHECKS } from './settings.ts';
 import type { Channel, HubSettings } from './settings.ts';
 import { Captchas } from './captcha.ts';
+import { msg91 } from './sms.ts';
 import type { SendSms } from './sms.ts';
 import { checkSite, readSite } from './site.ts';
 import { osrmRoadKm } from './routing.ts';
@@ -40,6 +41,9 @@ export class HubError extends Error {
   constructor(code: string, message: string, status = 400, details?: unknown) { super(message); this.code = code; this.status = status; this.details = details; }
 }
 
+/** MSG91 details saved from the admin page (setting "sms"). */
+interface SmsSetup { authKey: string; templateId: string; otpVar: string }
+
 export interface HubOptions {
   dbPath: string;
   now?: () => number;
@@ -47,6 +51,8 @@ export interface HubOptions {
   devOtp?: boolean;
   /** SMS codes (order OTP, portal mobile verification and sign-in codes): MSG91 in production (src/sms.ts). */
   sendSms?: SendSms;
+  /** The fetch used for MSG91 when it is set up from the admin page (tests). */
+  smsFetch?: typeof fetch;
   /** Road distance in km from a routing service, or null to use the store's road factor. Set: used instead of the routingUrl setting (tests). */
   roadKm?: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) => Promise<number | null>;
   /** Online payment (phase 3) is off until a payment gateway is set up. */
@@ -152,7 +158,7 @@ export class Hub {
     const signing = opts.licenceSigningKey === undefined ? null : typeof opts.licenceSigningKey === 'string' ? loadSigningKey(opts.licenceSigningKey) : opts.licenceSigningKey;
     this.licences = new Licences(this.db, this.now, this.sync, signing);
     this.mailer = opts.mailer ?? logMailer(log);
-    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, sendSms: opts.sendSms, log });
+    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, sms: () => this.smsSender(), log });
     this.captchas = new Captchas(this.now);
   }
   /** The picture captcha (src/captcha.ts), asked where the security checks say (settings `checks.captcha`). */
@@ -220,6 +226,9 @@ export class Hub {
 
   // ---------------------------------------------------------------- admin: settings, pause, overview
 
+  /** OTP codes shown on screen on every ordering channel: HUB_DEV_OTP, or the admin page's switch (settings.showOtpCodes). */
+  devOtpOn(): boolean { return Boolean(this.opts.devOtp || this.settings().showOtpCodes); }
+
   settings(): HubSettings {
     if (!this.cachedSettings) {
       const saved = Object.fromEntries(many<{ key: string; value_json: string }>(this.db, 'SELECT key, value_json FROM setting').map((r) => [r.key, JSON.parse(r.value_json)]));
@@ -240,7 +249,7 @@ export class Hub {
       const before = this.settings().checks;
       const checks = fullChecks(c.value.checks, before);
       // a check that sends SMS cannot work without a provider: switching it on would lock customers out
-      const sms = Boolean(this.opts.sendSms || this.opts.devOtp || this.opts.allowLogMailer);
+      const sms = Boolean(this.smsSender() || this.devOtpOn() || this.opts.allowLogMailer);
       for (const [k, ch] of SMS_CHECKS) {
         if (checks[k][ch] && !before[k][ch] && !sms) throw new HubError('SMS_NOT_SET_UP', 'Set up the SMS provider (MSG91) before switching on checks that send SMS codes.', 400, { fields: { [`checks.${k}.${ch}`]: 'Needs an SMS provider.' } });
       }
@@ -252,6 +261,83 @@ export class Hub {
     this.cachedSettings = null;
     this.opts.log?.info('hub settings changed', value);
     return this.settings();
+  }
+
+  // ---------------------------------------------------------------- admin: SMS provider (MSG91)
+  // Set on the server (HUB_MSG91_AUTH_KEY, HUB_MSG91_TEMPLATE_ID: opts.sendSms) or else from the admin page, saved as the
+  // setting "sms" (not part of settings(): its auth key is never sent back, only its last 4 characters).
+
+  private smsCache: { json: string; send: SendSms } | null = null;
+  private savedSms(): SmsSetup | null {
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'sms'");
+    return r ? JSON.parse(r.value_json) as SmsSetup : null;
+  }
+
+  /** The SMS sender in use: the server's, else the one set up on the admin page, else none (codes are only logged). */
+  smsSender(): SendSms | undefined {
+    if (this.opts.sendSms) return this.opts.sendSms;
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'sms'");
+    if (!r) return undefined;
+    if (this.smsCache?.json !== r.value_json) {
+      const c = JSON.parse(r.value_json) as SmsSetup;
+      this.smsCache = { json: r.value_json, send: msg91({ authKey: c.authKey, templateId: c.templateId, otpVar: c.otpVar, fetch: this.opts.smsFetch }) };
+    }
+    return this.smsCache.send;
+  }
+
+  smsSetup() {
+    if (this.opts.sendSms) return { source: 'server' as const, configured: true };
+    const c = this.savedSms();
+    return c ? { source: 'admin' as const, configured: true, templateId: c.templateId, otpVar: c.otpVar, authKeyEnding: c.authKey.slice(-4) }
+      : { source: 'none' as const, configured: false };
+  }
+
+  private smsOnServer() {
+    if (this.opts.sendSms) throw new HubError('SET_ON_SERVER', 'MSG91 is set on the server (HUB_MSG91_AUTH_KEY in /etc/posinext-cloud.env): change it there.', 409);
+  }
+
+  /** Saves the MSG91 details from the admin page. An empty auth key keeps the saved one. */
+  saveSmsSetup(input: unknown) {
+    this.smsOnServer();
+    const b = (input && typeof input === 'object' && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
+    const before = this.savedSms();
+    const errors: Record<string, string> = {};
+    const authKey = typeof b.authKey === 'string' && b.authKey.trim() ? b.authKey.trim() : before?.authKey ?? '';
+    if (!authKey) errors.authKey = 'Enter the MSG91 auth key.';
+    else if (!/^[A-Za-z0-9]{10,100}$/.test(authKey)) errors.authKey = 'The auth key is letters and digits only (MSG91 > API > Auth key).';
+    const templateId = String(b.templateId ?? '').trim();
+    if (!/^[A-Za-z0-9_-]{4,100}$/.test(templateId)) errors.templateId = 'Enter the template id (MSG91 > SMS > Templates).';
+    const otpVar = String(b.otpVar ?? '').trim().replace(/^#+|#+$/g, '') || 'otp';
+    if (!/^[A-Za-z0-9_]{1,40}$/.test(otpVar)) errors.otpVar = 'Letters, digits and _ only: the name between ## in the template.';
+    if (Object.keys(errors).length) throw new HubError('VALIDATION', Object.values(errors)[0]!, 400, { fields: errors });
+    const value: SmsSetup = { authKey, templateId, otpVar };
+    exec(this.db, "INSERT INTO setting (key, value_json, updated_at) VALUES ('sms',?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at", JSON.stringify(value), this.now());
+    this.opts.log?.info('SMS provider (MSG91) set up from the admin page', { templateId, otpVar });
+    return this.smsSetup();
+  }
+
+  /** Removes the admin page's MSG91 details; refused while website checks that send SMS are on (they would lock people out). */
+  removeSmsSetup() {
+    this.smsOnServer();
+    const c = this.settings().checks;
+    if (!this.devOtpOn() && !this.opts.allowLogMailer && SMS_CHECKS.some(([k, ch]) => c[k][ch])) {
+      throw new HubError('SMS_IN_USE', 'Switch off the customer website checks that send SMS codes (OTP, mobile number verification) first: without SMS no one could sign in with them.', 409);
+    }
+    exec(this.db, "DELETE FROM setting WHERE key = 'sms'");
+    this.opts.log?.info('SMS provider (MSG91) removed from the admin page');
+    return this.smsSetup();
+  }
+
+  /** Sends a test code to a mobile through the SMS provider in use; MSG91's refusal comes back as the error. */
+  async testSms(mobileIn: unknown) {
+    const send = this.smsSender();
+    if (!send) throw new HubError('SMS_NOT_SET_UP', 'Set up MSG91 first.', 400);
+    const mobile = normaliseMobile(String(mobileIn ?? ''));
+    if (!MOBILE_RE.test(mobile)) throw new HubError('VALIDATION', 'Enter a 10-digit mobile number.', 400, { fields: { mobile: 'Enter a 10-digit mobile number.' } });
+    const code = String(randomInt(100000, 1000000));
+    try { await send(mobile, `${code} is your PosiNext code. It expires in 10 minutes. Do not share it with anyone.`, code); }
+    catch (e) { throw new HubError('SMS_FAILED', e instanceof Error ? e.message : String(e), 502); }
+    return { sent: true, code };
   }
 
   /**
@@ -389,7 +475,7 @@ export class Hub {
   adminOverview() {
     const stores = many<StoreRow>(this.db, 'SELECT * FROM store ORDER BY slug').map((s) => this.storeSummary(s));
     return {
-      hub: { devOtp: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.opts.sendSms), routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
+      hub: { devOtp: this.devOtpOn(), devOtpEnv: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.smsSender()), routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
       settings: this.settings(), stores,
       posTypes: Object.values(PRODUCTS).map((p) => ({ code: p.code, name: p.name, app: p.app })),
     };
@@ -643,9 +729,9 @@ export class Hub {
       ON CONFLICT(mobile) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
         sends = CASE WHEN ? THEN otp.sends + 1 ELSE 1 END, window_start = CASE WHEN ? THEN otp.window_start ELSE excluded.window_start END`,
       mobile, hash(mobile + code), now + OTP_TTL, now, inWindow ? 1 : 0, inWindow ? 1 : 0);
-    await (this.opts.sendSms ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`, code);
+    await (this.smsSender() ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`, code);
     // demo mode (per channel, admin page) or HUB_DEV_OTP: the code is shown on screen
-    return { sent: true, ...(this.opts.devOtp || checks.demoMode[ch] ? { devCode: code } : {}) };
+    return { sent: true, ...(this.devOtpOn() || checks.demoMode[ch] ? { devCode: code } : {}) };
   }
 
   otpVerify(mobileIn: string, code: string) {
