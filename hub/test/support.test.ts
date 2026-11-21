@@ -67,6 +67,35 @@ test('support: without HUB_SUPPORT_NOTIFY_TO no inbox email is sent', async () =
   } finally { await h.close(); cleanup(h.dir); }
 });
 
+test('support inbox set on the admin page (Email): gets tickets, customers\' email replies go there; the server setting wins', async () => {
+  const h = await startHub();
+  try {
+    assert.equal((await h.call('GET', '/v1/admin/support-inbox')).status, 403);
+    assert.deepEqual((await h.call('GET', '/v1/admin/support-inbox', { admin: true })).json, { source: 'none', to: '' });
+    assert.equal((await h.call('PUT', '/v1/admin/support-inbox', { admin: true, body: { to: 'not an email' } })).status, 400);
+    assert.deepEqual((await h.call('PUT', '/v1/admin/support-inbox', { admin: true, body: { to: 'Help@SpiceCloud.in' } })).json, { source: 'admin', to: 'help@spicecloud.in' });
+
+    const a = await customer(h, 'asha@spicegarden.in', '9876543210');
+    const t = (await a.call('POST', '/v1/account/tickets', { subject: 'Help', body: 'Question' })).json;
+    assert.deepEqual([h.mail.at(-1)!.to, h.mail.at(-1)!.replyTo], ['help@spicecloud.in', 'asha@spicegarden.in']);
+    await h.call('POST', `/v1/admin/tickets/${t.id}/reply`, { admin: true, body: { body: 'Answer' } });
+    assert.deepEqual([h.mail.at(-1)!.to, h.mail.at(-1)!.replyTo], ['asha@spicegarden.in', 'help@spicecloud.in']);
+
+    // empty removes it: no inbox email, and the answer has no Reply-To
+    assert.deepEqual((await h.call('PUT', '/v1/admin/support-inbox', { admin: true, body: { to: '' } })).json, { source: 'none', to: '' });
+    const before = h.mail.length;
+    await a.call('POST', `/v1/account/tickets/${t.id}/reply`, { body: 'More' });
+    assert.equal(h.mail.length, before);
+  } finally { await h.close(); cleanup(h.dir); }
+
+  const s = await startHub(undefined, undefined, undefined, { supportNotifyTo: 'support@posinext.com' });
+  try {
+    s.hub.saveSupportInbox('other@example.com');
+    assert.deepEqual((await s.call('GET', '/v1/admin/support-inbox', { admin: true })).json, { source: 'server', to: 'support@posinext.com' });
+    assert.equal((await s.call('PUT', '/v1/admin/support-inbox', { admin: true, body: { to: 'x@y.com' } })).status, 409);
+  } finally { await s.close(); cleanup(s.dir); }
+});
+
 test('support: tickets are private to their account; checked; admin routes need the admin key', async () => {
   const h = await startHub();
   try {

@@ -25,8 +25,10 @@ import { osrmRoadKm } from './routing.ts';
 import { Accounts } from './accounts.ts';
 import { Licences, loadSigningKey } from './licences.ts';
 import type { KeyObject } from 'node:crypto';
-import { logMailer } from './mailer.ts';
-import type { Mailer } from './mailer.ts';
+import { logMailer, securityForPort, smtpMailer } from './mailer.ts';
+import type { Mail, Mailer, SmtpOptions, SmtpSecurity } from './mailer.ts';
+import { checkTemplates, fullTemplates, MAIL_TEMPLATES, renderMail, templatesView } from './mail-templates.ts';
+import type { MailTemplates } from './mail-templates.ts';
 import { PRODUCTS, type ProductCode } from './products.ts';
 
 /**
@@ -43,6 +45,9 @@ export class HubError extends Error {
 
 /** MSG91 details saved from the admin page (setting "sms"). */
 interface SmsSetup { authKey: string; templateId: string; otpVar: string }
+/** SMTP details saved from the admin page (setting "mail"). */
+interface MailSetup { host: string; port: number; security: SmtpSecurity; user: string; pass: string; from: string; fromName?: string }
+const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]{2,}$/;
 
 export interface HubOptions {
   dbPath: string;
@@ -53,6 +58,8 @@ export interface HubOptions {
   sendSms?: SendSms;
   /** The fetch used for MSG91 when it is set up from the admin page (tests). */
   smsFetch?: typeof fetch;
+  /** Added to the SMTP details saved on the admin page (tests: a plain stand-in server). */
+  smtpOverrides?: Partial<SmtpOptions>;
   /** Road distance in km from a routing service, or null to use the store's road factor. Set: used instead of the routingUrl setting (tests). */
   roadKm?: (from: { lat: number; lng: number }, to: { lat: number; lng: number }) => Promise<number | null>;
   /** Online payment (phase 3) is off until a payment gateway is set up. */
@@ -136,8 +143,10 @@ export class Hub {
   accounts: Accounts;
   /** P7-02: licence keys signed by this cloud */
   licences: Licences;
-  /** P8-08: email to customers (account codes, support replies). */
+  /** P8-08: email to customers (account codes, support replies): the server's mailer, else SMTP set up on the admin page. */
   mailer: Mailer;
+  /** The mailer from the server (HUB_BREVO_* / HUB_SMTP_*), or the log when none is set. */
+  private baseMailer: Mailer;
   private opts: HubOptions;
   /** open POS event streams per store, and when the last one closed */
   private streams = new Map<string, number>();
@@ -157,8 +166,11 @@ export class Hub {
     const log = opts.log ?? { info: () => undefined, warn: () => undefined };
     const signing = opts.licenceSigningKey === undefined ? null : typeof opts.licenceSigningKey === 'string' ? loadSigningKey(opts.licenceSigningKey) : opts.licenceSigningKey;
     this.licences = new Licences(this.db, this.now, this.sync, signing);
-    this.mailer = opts.mailer ?? logMailer(log);
-    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, sms: () => this.smsSender(), log });
+    this.baseMailer = opts.mailer ?? logMailer(log);
+    // every email goes through the mailer in use at that moment (the admin page can set SMTP up while the hub runs)
+    const hub = this;
+    this.mailer = { get kind() { return hub.mailSender().kind; }, send: (m: Mail) => hub.mailSender().send(m) };
+    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, templates: () => this.mailTemplates(), sms: () => this.smsSender(), log });
     this.captchas = new Captchas(this.now);
   }
   /** The picture captcha (src/captcha.ts), asked where the security checks say (settings `checks.captcha`). */
@@ -340,6 +352,128 @@ export class Hub {
     return { sent: true, code };
   }
 
+  // ---------------------------------------------------------------- admin: email (SMTP) and email templates
+  // Email set on the server (HUB_BREVO_* or HUB_SMTP_*: opts.mailer) wins; else a mailbox's SMTP server set up on the
+  // admin page, saved as the setting "mail" (its password is never sent back, only its last 4 characters).
+
+  private mailCache: { json: string; mailer: Mailer } | null = null;
+  private savedMail(): MailSetup | null {
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'mail'");
+    return r ? JSON.parse(r.value_json) as MailSetup : null;
+  }
+
+  /** The mailer in use: the server's, else the SMTP server set up on the admin page, else the log. */
+  mailSender(): Mailer {
+    if (this.baseMailer.kind !== 'log') return this.baseMailer;
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'mail'");
+    if (!r) return this.baseMailer;
+    if (this.mailCache?.json !== r.value_json) this.mailCache = { json: r.value_json, mailer: smtpMailer({ ...JSON.parse(r.value_json) as MailSetup, ...this.opts.smtpOverrides }) };
+    return this.mailCache.mailer;
+  }
+
+  mailSetup() {
+    if (this.baseMailer.kind !== 'log') return { source: 'server' as const, configured: true, kind: this.baseMailer.kind };
+    const c = this.savedMail();
+    return c ? { source: 'admin' as const, configured: true, host: c.host, port: c.port, security: c.security, user: c.user, from: c.from, fromName: c.fromName ?? '', passwordEnding: c.pass.slice(-4) }
+      : { source: 'none' as const, configured: false };
+  }
+
+  private mailOnServer() {
+    if (this.baseMailer.kind !== 'log') throw new HubError('SET_ON_SERVER', 'Email is set on the server (HUB_BREVO_* or HUB_SMTP_* in /etc/posinext-cloud.env): change it there.', 409);
+  }
+
+  /** Saves the SMTP details from the admin page. An empty password keeps the saved one. */
+  saveMailSetup(input: unknown) {
+    this.mailOnServer();
+    const b = (input && typeof input === 'object' && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
+    const before = this.savedMail();
+    const str = (v: unknown) => typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '';
+    const errors: Record<string, string> = {};
+    const host = str(b.host).toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(host)) errors.host = 'Enter the mail server, e.g. smtppro.zoho.in or smtp.gmail.com.';
+    const port = str(b.port) ? Number(str(b.port)) : 465;
+    if (!Number.isInteger(port) || port < 1 || port > 65535) errors.port = 'The port is a number, usually 465 or 587.';
+    const security: SmtpSecurity = b.security === 'tls' || b.security === 'starttls' ? b.security : securityForPort(port);
+    const user = str(b.user);
+    if (!user || user.length > 200 || /[\r\n]/.test(user)) errors.user = 'Enter the user name (usually the mailbox address).';
+    const pass = typeof b.pass === 'string' && b.pass ? b.pass : before?.pass ?? '';
+    if (!pass) errors.pass = 'Enter the password (for Gmail and Zoho, an app password).';
+    else if (pass.length > 500 || /[\r\n]/.test(pass)) errors.pass = 'That password cannot be right.';
+    const from = (str(b.from) || (EMAIL.test(user) ? user : '')).toLowerCase();
+    if (!EMAIL.test(from)) errors.from = 'Enter the address emails come from (the mailbox, or an alias it may send as).';
+    const fromName = str(b.fromName).replace(/["\\]/g, '');
+    if (fromName.length > 80 || /[\r\n]/.test(fromName)) errors.fromName = 'Keep the name to 80 characters.';
+    if (Object.keys(errors).length) throw new HubError('VALIDATION', Object.values(errors)[0]!, 400, { fields: errors });
+    const value: MailSetup = { host, port, security, user, pass, from, ...(fromName ? { fromName } : {}) };
+    exec(this.db, "INSERT INTO setting (key, value_json, updated_at) VALUES ('mail',?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at", JSON.stringify(value), this.now());
+    this.opts.log?.info('email (SMTP) set up from the admin page', { host, port, security, user, from });
+    return this.mailSetup();
+  }
+
+  /** Removes the admin page's SMTP details; refused while email verification is on (sign-up would close). */
+  removeMailSetup() {
+    this.mailOnServer();
+    if (this.settings().checks.emailVerification.portal && !this.opts.allowLogMailer) {
+      throw new HubError('MAIL_IN_USE', 'Switch off Email verification (Security checks) first: without email no one could sign up.', 409);
+    }
+    exec(this.db, "DELETE FROM setting WHERE key = 'mail'");
+    this.mailCache = null;
+    this.opts.log?.info('email (SMTP) removed from the admin page');
+    return this.mailSetup();
+  }
+
+  /** Sends one template, filled with example values, to an address through the mailer in use; the server's refusal is the error. */
+  async testMail(toIn: unknown, templateIn: unknown) {
+    const to = String(toIn ?? '').trim().toLowerCase();
+    if (!EMAIL.test(to)) throw new HubError('VALIDATION', 'Enter an email address.', 400, { fields: { to: 'Enter an email address.' } });
+    const id = (typeof templateIn === 'string' && templateIn in MAIL_TEMPLATES ? templateIn : 'verify') as keyof typeof MAIL_TEMPLATES;
+    const sender = this.mailSender();
+    if (sender.kind === 'log' && !this.opts.allowLogMailer) throw new HubError('MAIL_NOT_SET_UP', 'Set up email first.', 400);
+    const m = renderMail(this.mailTemplates()[id], MAIL_TEMPLATES[id].vars);
+    try { await sender.send({ to, subject: `[Test] ${m.subject}`, text: m.text }); }
+    catch (e) { throw new HubError('MAIL_FAILED', e instanceof Error ? e.message : String(e), 502); }
+    return { sent: true, to, template: id };
+  }
+
+  /** The support inbox saved on the admin page (setting "supportInbox"); HUB_SUPPORT_NOTIFY_TO on the server wins (src/support.ts). */
+  supportInbox(): string | undefined {
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'supportInbox'");
+    return r ? JSON.parse(r.value_json) as string : undefined;
+  }
+
+  /** Saves the support inbox; empty removes it (then no one is emailed about new tickets). */
+  saveSupportInbox(toIn: unknown): string | undefined {
+    const to = String(toIn ?? '').trim().toLowerCase();
+    if (!to) exec(this.db, "DELETE FROM setting WHERE key = 'supportInbox'");
+    else if (!EMAIL.test(to)) throw new HubError('VALIDATION', 'Enter the support email address.', 400, { fields: { supportInbox: 'Enter the support email address.' } });
+    else exec(this.db, "INSERT INTO setting (key, value_json, updated_at) VALUES ('supportInbox',?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at", JSON.stringify(to), this.now());
+    this.opts.log?.info('support inbox changed', { to: to || null });
+    return this.supportInbox();
+  }
+
+  /** The customer emails as sent now (the admin page's changes over the defaults). */
+  mailTemplates(): MailTemplates {
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'mailTemplates'");
+    return fullTemplates(r ? JSON.parse(r.value_json) : undefined);
+  }
+
+  mailTemplatesView() { return templatesView(this.mailTemplates()); }
+
+  /** Saves changed templates ({ verify: { subject, body }, ... }; null puts one back to the default). Only changes are kept. */
+  saveMailTemplates(input: unknown) {
+    const c = checkTemplates(input);
+    if (!c.ok) throw new HubError('VALIDATION', Object.values(c.errors)[0]!, 400, { fields: c.errors });
+    const r = one<{ value_json: string }>(this.db, "SELECT value_json FROM setting WHERE key = 'mailTemplates'");
+    const saved = (r ? JSON.parse(r.value_json) : {}) as Record<string, unknown>;
+    for (const [id, t] of Object.entries(c.value)) {
+      const d = MAIL_TEMPLATES[id as keyof typeof MAIL_TEMPLATES];
+      if (!t || (t.subject === d.subject && t.body === d.body)) delete saved[id]; else saved[id] = t;
+    }
+    exec(this.db, "INSERT INTO setting (key, value_json, updated_at) VALUES ('mailTemplates',?,?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at", JSON.stringify(saved), this.now());
+    this.opts.log?.info('email templates changed', { changed: Object.keys(saved) });
+    return this.mailTemplatesView();
+  }
+
   /**
    * Deletes a customer account (admin). Its people go, with their sign-ins, codes, support tickets and download history,
    * and its outlets are unlinked (the stores stay). Licence keys are append-only, and trial records keep one free trial
@@ -475,7 +609,7 @@ export class Hub {
   adminOverview() {
     const stores = many<StoreRow>(this.db, 'SELECT * FROM store ORDER BY slug').map((s) => this.storeSummary(s));
     return {
-      hub: { devOtp: this.devOtpOn(), devOtpEnv: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.smsSender()), routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
+      hub: { devOtp: this.devOtpOn(), devOtpEnv: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.smsSender()), mailProvider: this.mailSender().kind !== 'log', routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
       settings: this.settings(), stores,
       posTypes: Object.values(PRODUCTS).map((p) => ({ code: p.code, name: p.name, app: p.app })),
     };

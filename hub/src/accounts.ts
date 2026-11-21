@@ -4,6 +4,8 @@ import type { Db } from './db.ts';
 import { HubError } from './hub.ts';
 import { DEFAULT_PRODUCT, PRODUCTS, type ProductCode } from './products.ts';
 import type { Mailer } from './mailer.ts';
+import { fullTemplates, renderMail } from './mail-templates.ts';
+import type { MailTemplates } from './mail-templates.ts';
 import { fullChecks, type Checks } from './settings.ts';
 import type { SendSms } from './sms.ts';
 
@@ -47,6 +49,8 @@ export interface AccountsOptions {
   checks?: () => Checks;
   /** SMS codes (mobile verification, sign in with a code). Not given: codes are only logged (masked, or in full with allowLogMailer). */
   sendSms?: SendSms;
+  /** The email templates in use now (the admin page can change them while the hub runs). Not given: the defaults. */
+  templates?: () => MailTemplates;
   /** The SMS sender in use now (the admin page can set MSG91 up while the hub runs); wins over sendSms. */
   sms?: () => SendSms | undefined;
   log?: { info(m: string, d?: unknown): void; warn(m: string, d?: unknown): void };
@@ -460,11 +464,10 @@ export class Accounts {
   private async sendCode(userId: string, email: string, purpose: CodePurpose, quietWhenLimited = false) {
     const code = this.newCode('email_code', userId, purpose, quietWhenLimited);
     if (code === null) return;
-    const text = purpose === 'verify'
-      ? `Your PosiNext verification code is ${code}.\n\nIt works for 10 minutes. If you did not sign up for PosiNext, ignore this email.`
-      : `Your PosiNext password reset code is ${code}.\n\nIt works for 10 minutes. If you did not ask to reset your password, ignore this email: your password stays the same.`;
+    const templates = this.o.templates ? this.o.templates() : fullTemplates(undefined);
+    const { subject, text } = renderMail(purpose === 'verify' ? templates.verify : templates.reset, { code, minutes: String(CODE_MS / 60_000) });
     try {
-      await this.o.mailer.send({ to: email, subject: purpose === 'verify' ? `${code} is your PosiNext code` : 'Reset your PosiNext password', text });
+      await this.o.mailer.send({ to: email, subject, text });
     } catch (e) {
       this.o.log?.warn('email not sent', { email, error: String(e) });
       throw new HubError('EMAIL_FAILED', 'We could not send the email. Please try again in a minute.', 502);

@@ -1,45 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:net';
-import type { Socket } from 'node:net';
 import { mailerFromEnv, smtpMailer, smtpMessage } from '../src/mailer.ts';
+import { decodeBody, fakeSmtp, TEST_TLS } from './fake-smtp.ts';
 
 // The SMTP mailer (e.g. Zoho Mail for support@posinext.com), against a small stand-in SMTP server.
-interface Session { lines: string[]; data: string }
-function fakeSmtp(o: { password?: string } = {}) {
-  const sessions: Session[] = [];
-  const server = createServer((sock: Socket) => {
-    const s: Session = { lines: [], data: '' };
-    sessions.push(s);
-    let buf = '', inData = false, step = 0;
-    const say = (l: string) => sock.write(l + '\r\n');
-    say('220 fake.smtp ready');
-    sock.on('data', (d) => {
-      buf += d.toString('utf8');
-      if (inData) {
-        const end = buf.indexOf('\r\n.\r\n');
-        if (end < 0) return;
-        s.data = buf.slice(0, end); buf = buf.slice(end + 5); inData = false; say('250 2.0.0 queued');
-      }
-      for (let i = buf.indexOf('\r\n'); i >= 0 && !inData; i = buf.indexOf('\r\n')) {
-        const line = buf.slice(0, i); buf = buf.slice(i + 2); s.lines.push(line);
-        if (/^EHLO/.test(line)) { sock.write('250-fake.smtp\r\n250-AUTH LOGIN PLAIN\r\n250 8BITMIME\r\n'); }
-        else if (line === 'AUTH LOGIN') { step = 1; say('334 VXNlcm5hbWU6'); }
-        else if (step === 1) { step = 2; say('334 UGFzc3dvcmQ6'); }
-        else if (step === 2) { step = 0; Buffer.from(line, 'base64').toString() === (o.password ?? 'app-pass') ? say('235 2.7.0 ok') : say('535 5.7.8 Authentication failed'); }
-        else if (/^MAIL FROM|^RCPT TO/.test(line)) say('250 ok');
-        else if (line === 'DATA') { inData = true; say('354 go ahead'); if (buf.includes('\r\n.\r\n')) sock.emit('data', Buffer.alloc(0)); }
-        else if (line === 'QUIT') { say('221 bye'); sock.end(); }
-      }
-    });
-  });
-  return new Promise<{ port: number; sessions: Session[]; close(): Promise<void> }>((res) => server.listen(0, '127.0.0.1', () => res({
-    port: (server.address() as { port: number }).port, sessions,
-    close: () => new Promise<void>((r) => server.close(() => r())),
-  })));
-}
-
-const decodeBody = (data: string) => Buffer.from(data.split('\r\n\r\n')[1]!.replace(/\r\n/g, ''), 'base64').toString('utf8');
 
 test('smtp: signs in, sends from support@ with a Reply-To, body intact (UTF-8, lines starting with a dot)', async () => {
   const smtp = await fakeSmtp();
@@ -77,3 +41,23 @@ test('mailerFromEnv: Brevo first, then SMTP (port 465, from = the user), else th
   assert.equal(mailerFromEnv({ HUB_SMTP_HOST: 'smtppro.zoho.in', HUB_SMTP_USER: 'support@posinext.com' }, log).kind, 'log');
   assert.equal(mailerFromEnv({}, log).kind, 'log');
 });
+
+test('smtp: STARTTLS (port 587): plain hello, then TLS before the password; a server without it is an error', async () => {
+  const smtp = await fakeSmtp({ starttls: true });
+  try {
+    const mailer = smtpMailer({ host: '127.0.0.1', port: smtp.port, security: 'starttls', ca: TEST_TLS.cert, user: 'support@posinext.com', pass: 'app-pass', from: 'support@posinext.com' });
+    await mailer.send({ to: 'asha@spice.in', subject: 'Hello', text: 'Over TLS' });
+    const s = smtp.sessions[0]!;
+    assert.equal(s.tls, true);
+    assert.deepEqual(s.lines.slice(0, 3).map((l) => l.split(' ')[0]), ['EHLO', 'STARTTLS', 'EHLO']);
+    assert.deepEqual(s.to, ['asha@spice.in']);
+    assert.equal(decodeBody(s.data), 'Over TLS');
+    // a certificate that is not trusted is refused (no ca: the self-signed test certificate)
+    await assert.rejects(smtpMailer({ host: '127.0.0.1', port: smtp.port, security: 'starttls', user: 'u@x.com', pass: 'p', from: 'u@x.com', timeoutMs: 3000 }).send({ to: 'a@b.com', subject: 'x', text: 'y' }), /certificate/i);
+  } finally { await smtp.close(); }
+  const plain = await fakeSmtp();
+  try {
+    await assert.rejects(smtpMailer({ host: '127.0.0.1', port: plain.port, security: 'starttls', user: 'u@x.com', pass: 'p', from: 'u@x.com', timeoutMs: 3000 }).send({ to: 'a@b.com', subject: 'x', text: 'y' }), /STARTTLS/);
+  } finally { await plain.close(); }
+});
+

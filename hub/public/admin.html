@@ -217,6 +217,10 @@
     </div>
     <h2>SMS codes (MSG91)</h2>
     <div class="card" id="smsCard"></div>
+    <h2>Email (SMTP)</h2>
+    <div class="card" id="mailCard"></div>
+    <h2>Email templates</h2>
+    <div class="card" id="tplCard"></div>
     <h2>Security checks</h2>
     <div class="card">
       <form id="checksForm">
@@ -239,7 +243,7 @@
   const $ = (id) => document.getElementById(id);
   const keyStore = { get: () => { try { return sessionStorage.getItem('hubAdminKey') || ''; } catch { return ''; } },
     set: (v) => { try { v ? sessionStorage.setItem('hubAdminKey', v) : sessionStorage.removeItem('hubAdminKey'); } catch { /* private window */ } } };
-  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false, smsDirty = false, smsLoaded = false;
+  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false, smsDirty = false, smsLoaded = false, mailDirty = false, mailLoaded = false;
   let health = null; // GET /health/deep: hosted outlets down, backups failing
   const ui = { orderStore: '', orderStatus: 'open', expanded: new Set(), links: new Map(), pausing: false, up: new Map(), licence: new Map(), sitePasswords: new Map() };
 
@@ -332,6 +336,7 @@
       if (!settingsDirty) fillSettings();
       if (!checksDirty) fillChecks();
       if (!smsLoaded) { smsLoaded = true; fillSms(); } // then only after a change here, so typing and messages are kept
+      if (!mailLoaded) { mailLoaded = true; fillMail(); fillTemplates(); } // the same
       if (r.tab === 'settings' && !(document.activeElement && document.activeElement.closest('#upAccount'))) await renderAccount();
       for (const el of document.querySelectorAll('[data-updated]')) el.textContent = `Updated ${new Date().toLocaleTimeString('en-IN')}`;
     } catch (e) { for (const el of document.querySelectorAll('[data-updated]')) el.textContent = e.message; }
@@ -450,7 +455,7 @@
   const ACCOUNT_STATUS = { new: 'New', trial: 'Trial', active: 'Active', past_due: 'Payment due', suspended: 'Suspended', closed: 'Closed' };
   async function renderAccounts() {
     const { accounts, signupOpen } = await api('GET', '/v1/admin/accounts');
-    $('accountWarn').replaceChildren(...(signupOpen ? [] : [h('div', { class: 'banner info' }, 'Sign-up is closed: no email provider is set up. Set HUB_BREVO_API_KEY and HUB_MAIL_FROM in /etc/posinext-cloud.env.')]));
+    $('accountWarn').replaceChildren(...(signupOpen ? [] : [h('div', { class: 'banner info' }, 'Sign-up is closed: no email provider is set up. Set it up in Hub settings > Email (SMTP).')]));
     if (!accounts.length) { $('accountList').replaceChildren(h('div', { class: 'muted' }, 'No accounts yet.')); return; }
     $('accountList').replaceChildren(h('table', {},
       h('thead', {}, h('tr', {}, h('th', {}, 'Business'), h('th', {}, 'Owner'), h('th', {}, 'Mobile'), h('th', {}, 'Status'), h('th', { class: 'num' }, 'People'), h('th', { class: 'num' }, 'Outlets'), h('th', {}, 'Signed up'), h('th', {}, ''))),
@@ -1036,6 +1041,169 @@
         h('span', { class: 'muted' }, s.configured ? chip('ok', 'Set up') : chip('warn', 'Not set up: codes are only logged'))),
       h('div', { class: 'hint' }, 'The auth key is kept in the hub database (and its backups); only its last 4 characters are shown here.'));
     $('smsCard').replaceChildren(form, s.configured ? test : null, h('div', { id: 'smsMsg' }));
+  }
+
+  // ------------------------------------------------------------ Email (SMTP)
+  const mailMsg = (text, ok) => $('mailMsg').replaceChildren(text ? h('div', { class: ok ? 'box' : 'err' }, text) : '');
+  const MAIL_PRESETS = [
+    { name: 'Zoho Mail', host: 'smtppro.zoho.in', port: 465, security: 'tls', hint: 'Zoho: use an app password (Zoho Accounts > Security > App passwords). smtppro.zoho.in is for paid Zoho Mail in India; free accounts use smtp.zoho.in.' },
+    { name: 'Gmail / Google Workspace', host: 'smtp.gmail.com', port: 465, security: 'tls', hint: 'Gmail: turn on 2-step verification, then use an app password (myaccount.google.com/apppasswords), not the normal password.' },
+    { name: 'Microsoft 365', host: 'smtp.office365.com', port: 587, security: 'starttls', hint: 'Microsoft 365: SMTP AUTH must be allowed for the mailbox (Microsoft 365 admin > the user > Mail > Manage email apps).' },
+    { name: 'Brevo', host: 'smtp-relay.brevo.com', port: 587, security: 'starttls', hint: 'Brevo: the user name is your SMTP login and the password an SMTP key (Brevo > SMTP & API). The from address must be a verified sender.' },
+  ];
+  /** A "send a test email" box; template: which email to send (the saved version, filled with example values). */
+  function mailTestForm(id, template, label, msg) {
+    return h('form', { class: 'row', style: 'margin-top:14px;align-items:flex-end', onsubmit: async (ev) => {
+        ev.preventDefault(); msg('');
+        const btn = ev.target.querySelector('button'); btn.disabled = true;
+        try { const r = await api('POST', '/v1/admin/mail/test', { to: $(id).value, template: template() }); msg(`Sent to ${r.to}. Check the inbox (and spam) in a minute.`, true); }
+        catch (e) { msg(e.message); } finally { btn.disabled = false; }
+      } },
+      h('div', { style: 'flex:1;min-width:220px' }, h('label', { for: id }, label), h('input', { id, type: 'email', placeholder: 'you@example.com', value: (() => { try { return localStorage.getItem('hubTestEmail') || ''; } catch { return ''; } })(),
+        onchange: (e) => { try { localStorage.setItem('hubTestEmail', e.target.value.trim()); } catch { /* private window */ } } })),
+      h('button', { type: 'submit' }, 'Send test email'));
+  }
+  async function fillMail() {
+    let s;
+    try { s = await api('GET', '/v1/admin/mail'); } catch (e) { $('mailCard').replaceChildren(h('div', { class: 'err' }, e.message)); return; }
+    if (mailDirty) return;
+    const test = mailTestForm('mailTestTo', () => 'verify', 'Send a test email to', mailMsg);
+    if (s.source === 'server') {
+      $('mailCard').replaceChildren(h('p', {}, chip('ok', s.kind === 'brevo' ? 'Brevo set up on the server' : 'SMTP set up on the server')),
+        h('div', { class: 'hint' }, 'Set by HUB_BREVO_API_KEY or HUB_SMTP_HOST in /etc/posinext-cloud.env, so it is changed there (then restart the hub). Remove those lines to set it up here instead.'),
+        test, h('div', { id: 'mailMsg' }), await supportInboxBlock());
+      return;
+    }
+    const field = (id, label, input, hint) => h('div', {}, h('label', { for: id }, label), input, hint ? h('div', { class: 'hint' }, hint) : null, h('div', { class: 'err', 'data-mail-err': id }));
+    const FIELD_OF = { host: 'mailHost', port: 'mailPort', security: 'mailSecurity', user: 'mailUser', pass: 'mailPass', from: 'mailFrom', fromName: 'mailFromName' };
+    let securityTouched = s.configured;
+    const security = h('select', { id: 'mailSecurity', onchange: () => { securityTouched = true; } },
+      h('option', { value: 'tls' }, 'SSL/TLS (usually port 465)'), h('option', { value: 'starttls' }, 'STARTTLS (usually port 587)'));
+    security.value = s.security || 'tls';
+    const port = h('input', { id: 'mailPort', type: 'number', min: '1', max: '65535', value: String(s.port || 465),
+      oninput: () => { if (!securityTouched) security.value = port.value === '587' ? 'starttls' : 'tls'; } });
+    const presetHint = h('div', { class: 'hint', style: 'margin-top:6px' });
+    const presets = h('div', { class: 'row', style: 'gap:6px' }, h('span', { class: 'muted' }, 'Fill in for:'),
+      MAIL_PRESETS.map((p) => h('button', { type: 'button', onclick: () => {
+        $('mailHost').value = p.host; port.value = String(p.port); security.value = p.security; securityTouched = true;
+        presetHint.textContent = p.hint; mailDirty = true; $('mailUser').focus();
+      } }, p.name)));
+    const form = h('form', { oninput: () => { mailDirty = true; }, onsubmit: async (ev) => {
+        ev.preventDefault(); mailMsg('');
+        for (const el of document.querySelectorAll('[data-mail-err]')) el.textContent = '';
+        try {
+          await api('PUT', '/v1/admin/mail', { host: $('mailHost').value, port: port.value, security: security.value, user: $('mailUser').value, pass: $('mailPass').value, from: $('mailFrom').value, fromName: $('mailFromName').value });
+          await refresh(); mailDirty = false; await fillMail(); mailMsg('Saved. Customer emails go through this mail server now: send a test email to check.', true);
+        } catch (e) {
+          if (e.fields) for (const [k, m] of Object.entries(e.fields)) { const el = document.querySelector(`[data-mail-err="${FIELD_OF[k] || k}"]`); if (el) el.textContent = m; }
+          else mailMsg(e.message);
+        }
+      } },
+      h('div', { class: 'hint', style: 'margin:0 0 10px' }, 'The mailbox that sends sign-up codes, password resets and support answers to customers, e.g. support@yourdomain.com.'),
+      presets, presetHint,
+      h('div', { class: 'grid' },
+        field('mailHost', 'Mail server', h('input', { id: 'mailHost', value: s.host || '', placeholder: 'smtppro.zoho.in', autocomplete: 'off' })),
+        field('mailPort', 'Port', port),
+        field('mailSecurity', 'Security', security)),
+      h('div', { class: 'grid' },
+        field('mailUser', 'User name', h('input', { id: 'mailUser', value: s.user || '', placeholder: 'support@yourdomain.com', autocomplete: 'off' }), 'Usually the full mailbox address.'),
+        field('mailPass', 'Password', h('input', { id: 'mailPass', type: 'password', autocomplete: 'new-password', placeholder: s.configured ? `Saved, ending ${s.passwordEnding}: leave empty to keep` : 'App password' }), 'For Gmail and Zoho, an app password.')),
+      h('div', { class: 'grid' },
+        field('mailFrom', 'From address', h('input', { id: 'mailFrom', type: 'email', value: s.from || '', placeholder: 'Empty: the user name' }), 'The mailbox, or an alias it is allowed to send as.'),
+        field('mailFromName', 'From name', h('input', { id: 'mailFromName', value: s.fromName || '', placeholder: 'PosiNext' }), 'What customers see as the sender.')),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', type: 'submit' }, s.configured ? 'Save changes' : 'Save and use this mail server'),
+        s.configured ? h('button', { type: 'button', class: 'danger', onclick: async () => {
+          if (!confirm('Remove the mail server? Customer emails (sign-up codes, password resets, support answers) then stop.')) return;
+          try { await api('DELETE', '/v1/admin/mail'); await refresh(); mailDirty = false; await fillMail(); mailMsg('Removed.', true); } catch (e) { mailMsg(e.message); }
+        } }, 'Remove') : null,
+        h('span', { class: 'muted' }, s.configured ? chip('ok', 'Set up') : chip('warn', 'Not set up: sign-up is closed'))),
+      h('div', { class: 'hint' }, 'The password is kept in the hub database (and its backups); only its last 4 characters are shown here. Saving does not try the server: send a test email.'));
+    $('mailCard').replaceChildren(form, s.configured ? test : null, h('div', { id: 'mailMsg' }), await supportInboxBlock());
+  }
+  /** The support inbox: new tickets and customer replies are emailed there, and customers' email replies go to it. */
+  async function supportInboxBlock() {
+    let v;
+    try { v = await api('GET', '/v1/admin/support-inbox'); } catch (e) { return h('div', { class: 'err' }, e.message); }
+    const msg = h('div');
+    const say = (text, ok) => msg.replaceChildren(text ? h('div', { class: ok ? 'box' : 'err' }, text) : '');
+    const head = [h('h3', { style: 'margin:22px 0 0' }, 'Support inbox'),
+      h('div', { class: 'hint' }, 'Gets an email for each new support ticket and each customer reply (Reply there goes to the customer). Customers who reply to a support answer by email reach this inbox too. Sent through the mail server above.')];
+    if (v.source === 'server') return h('div', {}, head, h('p', {}, chip('ok', v.to), ' ', h('span', { class: 'muted' }, 'set by HUB_SUPPORT_NOTIFY_TO on the server: change it there')));
+    const input = h('input', { id: 'supportInbox', type: 'email', value: v.to, placeholder: 'support@yourdomain.com', oninput: () => { mailDirty = true; } });
+    return h('div', {}, head,
+      h('form', { class: 'row', style: 'margin-top:8px;align-items:flex-end', onsubmit: async (ev) => {
+          ev.preventDefault(); say('');
+          try { const r = await api('PUT', '/v1/admin/support-inbox', { to: input.value }); mailDirty = false; say(r.to ? `Saved. Support emails go to ${r.to}.` : 'Removed: no one is emailed about new tickets (they still show under Support).', true); }
+          catch (e) { say(e.fields ? Object.values(e.fields).join(' ') : e.message); }
+        } },
+        h('div', { style: 'flex:1;min-width:220px' }, h('label', { for: 'supportInbox' }, 'Support inbox'), input),
+        h('button', { type: 'submit' }, 'Save inbox')),
+      v.to ? null : h('div', { class: 'hint' }, 'Not set: new tickets are only shown under Support.'),
+      msg);
+  }
+
+  // ------------------------------------------------------------ Email templates
+  const tpl = { view: null, id: 'verify', drafts: new Map(), lastField: 'tplBody' };
+  const tplMsg = (text, ok) => $('tplMsg').replaceChildren(text ? h('div', { class: ok ? 'box' : 'err' }, text) : '');
+  const fillVars = (text, vars) => text.replace(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g, (all, n) => n in vars ? vars[n] : all);
+  async function fillTemplates() {
+    try { tpl.view = await api('GET', '/v1/admin/mail-templates'); } catch (e) { $('tplCard').replaceChildren(h('div', { class: 'err' }, e.message)); return; }
+    renderTemplate();
+  }
+  function renderTemplate() {
+    const all = tpl.view.templates, t = all.find((x) => x.id === tpl.id) || all[0];
+    tpl.id = t.id;
+    const draft = tpl.drafts.get(t.id) || { subject: t.subject, body: t.body };
+    const dirty = () => { const d = tpl.drafts.get(t.id); return Boolean(d) && (d.subject !== t.subject || d.body !== t.body); };
+    const pick = h('select', { id: 'tplPick', 'aria-label': 'Email', onchange: () => { tpl.id = pick.value; tplMsg(''); renderTemplate(); } },
+      all.map((x) => h('option', { value: x.id, selected: x.id === t.id }, `${x.label}${x.changed ? ' (changed)' : ''}${tpl.drafts.has(x.id) && x.id !== t.id ? ' — not saved' : ''}`)));
+    const subject = h('input', { id: 'tplSubject', value: draft.subject, onfocus: () => { tpl.lastField = 'tplSubject'; } });
+    const body = h('textarea', { id: 'tplBody', rows: '9', onfocus: () => { tpl.lastField = 'tplBody'; } });
+    body.value = draft.body;
+    const pvSubject = h('div', { style: 'font-weight:600;margin-bottom:6px' }), pvBody = h('div', { style: 'white-space:pre-wrap' });
+    const unsaved = h('span', { class: 'muted' });
+    const update = () => {
+      tpl.drafts.set(t.id, { subject: subject.value, body: body.value });
+      if (!dirty()) tpl.drafts.delete(t.id);
+      pvSubject.textContent = fillVars(subject.value, t.vars).replace(/\s+/g, ' ');
+      pvBody.textContent = fillVars(body.value, t.vars);
+      unsaved.textContent = dirty() ? 'Not saved' : '';
+    };
+    subject.addEventListener('input', update); body.addEventListener('input', update);
+    const insert = (name) => {
+      const el = $(tpl.lastField) || body, text = `{{${name}}}`;
+      const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? el.value.length;
+      el.value = el.value.slice(0, a) + text + el.value.slice(b);
+      el.focus(); el.setSelectionRange(a + text.length, a + text.length); update();
+    };
+    const save = async (value, done) => {
+      tplMsg(''); for (const el of document.querySelectorAll('[data-tpl-err]')) el.textContent = '';
+      try { tpl.view = await api('PUT', '/v1/admin/mail-templates', { [t.id]: value }); tpl.drafts.delete(t.id); renderTemplate(); tplMsg(done, true); }
+      catch (e) {
+        if (e.fields) for (const [k, m] of Object.entries(e.fields)) { const el = document.querySelector(`[data-tpl-err="${k.split('.')[1] || k}"]`); if (el) el.textContent = m; else tplMsg(m); }
+        else tplMsg(e.message);
+      }
+    };
+    $('tplCard').replaceChildren(
+      h('div', { class: 'hint', style: 'margin:0 0 10px' }, 'The emails customers get. Plain text. Words in {{double braces}} are filled in when the email is sent.'),
+      h('label', { for: 'tplPick', style: 'margin-top:0' }, 'Email'), pick,
+      h('div', { class: 'hint' }, t.hint),
+      h('div', { class: 'cols' },
+        h('div', {},
+          h('label', { for: 'tplSubject' }, 'Subject'), subject, h('div', { class: 'err', 'data-tpl-err': 'subject' }),
+          h('label', { for: 'tplBody' }, 'Text'), body, h('div', { class: 'err', 'data-tpl-err': 'body' }),
+          h('div', { class: 'row', style: 'gap:6px;margin-top:6px' }, h('span', { class: 'muted' }, 'Insert:'),
+            Object.keys(t.vars).map((n) => h('button', { type: 'button', title: `For example: ${t.vars[n]}${t.required.includes(n) ? ' (must be used)' : ''}`, onclick: () => insert(n) }, `{{${n}}}${t.required.includes(n) ? ' *' : ''}`)))),
+        h('div', {}, h('label', {}, 'Preview (example values)'), h('div', { class: 'box', style: 'margin-top:0' }, pvSubject, pvBody))),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', type: 'button', onclick: () => save({ subject: subject.value, body: body.value }, 'Saved. The next email of this kind uses it.') }, 'Save template'),
+        h('button', { type: 'button', onclick: () => { tpl.drafts.delete(t.id); renderTemplate(); } }, 'Undo changes'),
+        t.changed ? h('button', { type: 'button', class: 'danger', onclick: () => { if (confirm(`Put "${t.label}" back to the original text?`)) save(null, 'Back to the original text.'); } }, 'Reset to default') : null,
+        t.changed ? chip('warn', 'Changed') : chip('plain', 'Default text'), unsaved),
+      mailTestForm('tplTestTo', () => tpl.id, 'Send this email (as saved) to', tplMsg),
+      h('div', { id: 'tplMsg' }));
+    update();
   }
 
   // ------------------------------------------------------------ start

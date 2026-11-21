@@ -4,6 +4,7 @@ import type { Db } from './db.ts';
 import { HubError } from './hub.ts';
 import type { Hub } from './hub.ts';
 import { productOf, type ProductCode } from './products.ts';
+import { renderMail } from './mail-templates.ts';
 
 /**
  * Support in the customer portal (P8-08, ADR-0007): tickets with replies (customer and vendor), announcements and a
@@ -57,20 +58,24 @@ const optionalProduct = (v: unknown): ProductCode | null => {
 
 export class Support {
   private hub: Hub;
-  private notifyTo: string | undefined;
+  /** HUB_SUPPORT_NOTIFY_TO on the server: wins over the inbox saved on the admin page. */
+  readonly serverInbox: string | undefined;
   private log: { warn(m: string): void };
   private get db(): Db { return this.hub.db; }
-  /** `notifyTo`: the support inbox that gets each new ticket and each customer reply (HUB_SUPPORT_NOTIFY_TO). Not set: none. */
+  /** The support inbox: gets each new ticket and each customer reply, and is where customers' email replies go. Not set: none. */
+  get notifyTo(): string | undefined { return this.serverInbox ?? this.hub.supportInbox(); }
+  /** `notifyTo`: the support inbox from the server (HUB_SUPPORT_NOTIFY_TO); else the one saved on the admin page (Email). */
   constructor(hub: Hub, notifyTo?: string, log: { warn(m: string): void } = console) {
     this.hub = hub;
-    this.notifyTo = notifyTo?.trim() || undefined;
+    this.serverInbox = notifyTo?.trim() || undefined;
     this.log = log;
     hub.db.exec(SCHEMA);
   }
 
   /** Emails the support inbox about a customer's message; "Reply" there goes to the customer. Saved either way. */
   private async notify(t: Ticket, body: string, isNew: boolean): Promise<void> {
-    if (!this.notifyTo) return;
+    const to = this.notifyTo;
+    if (!to) return;
     const account = one<{ name: string; phone: string }>(this.db, 'SELECT a.name, a.phone FROM ticket t JOIN account a ON a.id = t.account_id WHERE t.id = ?', t.id);
     const by = t.openedBy;
     const text = [
@@ -81,7 +86,7 @@ export class Support {
       'Answer on the admin page (Support), so the customer sees it in the portal too.',
     ].join('\n');
     try {
-      await this.hub.mailer.send({ to: this.notifyTo, subject: `${isNew ? '' : 'Re: '}[Ticket #${t.number}] ${t.subject}`, text, ...(by ? { replyTo: by.email } : {}) });
+      await this.hub.mailer.send({ to, subject: `${isNew ? '' : 'Re: '}[Ticket #${t.number}] ${t.subject}`, text, ...(by ? { replyTo: by.email } : {}) });
     } catch (e) {
       this.log.warn(`ticket #${t.number} saved but the support inbox was not emailed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -162,11 +167,9 @@ export class Support {
       exec(this.db, "UPDATE ticket SET status = ?, updated_at = ? WHERE id = ?", b.close === true ? 'closed' : 'answered', at, t.id);
     });
     if (t.openedBy) {
-      await this.hub.mailer.send({
-        to: t.openedBy.email,
-        subject: `Re: [Ticket #${t.number}] ${t.subject}`,
-        text: `${body}\n\n— ${name}\n\nSee the whole conversation and reply in your client area: Support tickets › #${t.number}.`,
-      }).catch(() => undefined); // the answer is saved either way; the portal shows it
+      const mail = renderMail(this.hub.mailTemplates().ticketReply, { reply: body, staffName: name, ticketNumber: String(t.number), ticketSubject: t.subject });
+      const inbox = this.notifyTo; // the customer's "Reply" goes to the support inbox, not the sending mailbox
+      await this.hub.mailer.send({ to: t.openedBy.email, ...mail, ...(inbox ? { replyTo: inbox } : {}) }).catch(() => undefined); // the answer is saved either way; the portal shows it
     }
     return this.ticket(t.id, true, true);
   }
