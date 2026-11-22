@@ -80,6 +80,19 @@ test('downloads: GitHub down keeps the last list (also after a restart); nothing
     } finally { await h2.close(); }
   } finally { await h.close(); cleanup(h.dir); }
 
+  // a slow GitHub never holds up the portal once a list exists: the stale list is answered, refreshed behind it
+  const slow = fakeGitHub();
+  const s = await startHub(undefined, undefined, undefined, { githubFetch: ((u: string | URL) => (slow.state.down ? new Promise<Response>(() => {}) : slow.f(u))) as typeof fetch });
+  try {
+    await s.call('GET', '/v1/downloads');
+    slow.state.down = true; // GitHub now hangs
+    s.clock.t += 11 * 60_000;
+    const t0 = Date.now();
+    const r = await s.call('GET', '/v1/downloads');
+    assert.equal(r.json.downloads[0].version, '0.1.7');
+    assert.ok(Date.now() - t0 < 2000, 'answered without waiting for GitHub');
+  } finally { await s.close(); cleanup(s.dir); }
+
   const empty = fakeGitHub();
   empty.state.releases = {};
   const e = await startHub(undefined, undefined, undefined, { githubFetch: empty.f });

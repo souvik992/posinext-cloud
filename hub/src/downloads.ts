@@ -112,11 +112,21 @@ export class Downloads {
 
   private now() { return (this.o.now ?? Date.now)(); }
 
-  /** The catalogue (fetched from GitHub when the cached list is older than cacheMs; the cached list when GitHub fails). */
+  /**
+   * The catalogue. When the cached list is older than cacheMs it is refreshed from GitHub in the background and the list
+   * there is (or the copy saved before a restart) is answered at once, so the portal never waits on GitHub. Only when
+   * nothing has ever been fetched or saved does it wait for GitHub (the cached list when GitHub fails).
+   */
   async list(): Promise<DownloadView[]> {
-    if (this.now() - this.fetchedAt > (this.o.cacheMs ?? 600_000)) await this.refresh();
+    if (this.now() - this.fetchedAt > (this.o.cacheMs ?? 600_000)) {
+      const r = this.refresh();
+      if (this.fetchedAt === 0 && this.found.size === 0) await r;
+      else r.catch((e: unknown) => this.o.log?.warn('downloads: refresh failed', { error: String(e) }));
+    }
+    const uploads = new Map<string, UploadedFile>();
+    for (const f of this.files()) if (!uploads.has(f.item)) uploads.set(f.item, f); // newest first
     return CATALOGUE.map((item) => {
-      const u = this.newestUpload(item.id);
+      const u = uploads.get(item.id);
       const f = u
         ? { version: u.version, fileName: u.fileName, size: u.size, publishedAt: new Date(u.uploadedAt).toISOString(), build: null }
         : this.found.get(item.id);
