@@ -81,7 +81,9 @@ interface Route { method: string; re: RegExp; keys: string[]; cors: boolean; max
 
 const json = (res: ServerResponse, status: number, body: unknown, cors = false) => {
   const text = JSON.stringify(body);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(text), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(cors ? CORS : {}) });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(text), 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    // answers meant only for this site's own pages cannot be loaded by another site's page (as a script or image)
+    ...(cors ? CORS : { 'Cross-Origin-Resource-Policy': 'same-origin' }) });
   res.end(text);
 };
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Order-Token, X-Site-Token', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS', 'Access-Control-Max-Age': '600' };
@@ -97,6 +99,20 @@ function limiter(perMinute: () => number) {
 }
 
 const PAGE_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' };
+
+const LOOPBACK = /^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/;
+/**
+ * The visitor's address, for rate limits. On the live server Caddy (on this machine) forwards every request, so the
+ * connection is always from 127.0.0.1 and every visitor would share one limit: one bot could lock everyone out of
+ * signing in. Caddy (no trusted_proxies) replaces X-Forwarded-For with the address it saw, so it is used, but only on a
+ * loopback connection; a visitor connecting directly cannot choose their address with the header.
+ */
+export function clientIp(req: IncomingMessage): string {
+  const remote = req.socket.remoteAddress ?? '?';
+  if (!LOOPBACK.test(remote)) return remote;
+  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return fwd.at(-1) ?? remote;
+}
 
 export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { demos: Demos | null } {
   const routes: Route[] = [];
@@ -164,7 +180,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   /** A device's request to its outlet, through the outlet's tunnel. */
   const forwardToOutlet = async (req: IncomingMessage, res: ServerResponse, outlet: { id: string }) => {
     try {
-      deviceLimit(req.socket.remoteAddress ?? '?');
+      deviceLimit(clientIp(req));
       let body: Buffer | null = null;
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         const chunks: Buffer[] = [];
@@ -272,7 +288,9 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   const portalOnly = (c: Ctx) => { if (!isPortal(c)) throw new HubError('NOT_AVAILABLE', 'Signing in with a code is not available here. Sign in with your password.', 404); };
   add('POST', '/v1/account/code/send', (c) => { portalOnly(c); signupLimit(c.ip); captcha(c); return hub.accounts.sendSignInCode((c.body as B)?.phone); });
   add('POST', '/v1/account/code/login', (c) => { portalOnly(c); codeLimit(c.ip); const b = c.body as B; return setSession(c, hub.accounts.signInWithCode(b?.phone, b?.code, ua(c))); });
-  add('POST', '/v1/account/logout', (c) => { hub.accounts.logout(accountToken(c)); return setSession(c, null); });
+  // signing out also clears this site's cache and storage in the browser (a shared PC keeps nothing of the account).
+  // Not "cookies": that would clear every cookie of the whole domain (posinext.com), other sites' sign-ins too.
+  add('POST', '/v1/account/logout', (c) => { hub.accounts.logout(accountToken(c)); c.res.setHeader('Clear-Site-Data', '"cache", "storage"'); return setSession(c, null); });
   add('GET', '/v1/account/me', (c) => {
     const token = accountToken(c);
     const me = hub.accounts.me(token);
@@ -821,7 +839,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
         const text = Buffer.concat(chunks).toString('utf8');
         if (text) { if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) throw new HubError('UNSUPPORTED_MEDIA_TYPE', 'Send JSON.', 415); try { body = JSON.parse(text); } catch { throw new HubError('BAD_JSON', 'The request is not valid JSON.', 400); } }
       }
-      const out = await route.handler({ req, res, params, query: url.searchParams, body, ip: req.socket.remoteAddress ?? '?' });
+      const out = await route.handler({ req, res, params, query: url.searchParams, body, ip: clientIp(req) });
       if (out === Symbol.for('handled')) return;
       json(res, req.method === 'POST' && /\/orders$/.test(url.pathname) ? 201 : 200, out ?? { ok: true }, route.cors);
     } catch (e) {
