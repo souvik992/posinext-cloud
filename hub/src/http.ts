@@ -24,6 +24,7 @@ import { Support } from './support.ts';
 import type { Portal } from './portal.ts';
 import type { DemoHost, DemoSeed } from './demos.ts';
 import type { PublishedMenu } from '../../contract/src/menu.ts';
+import { billHtml, billPdf } from './bill-doc.ts';
 
 /**
  * The hub's HTTP API (contract/openapi.yaml). Three kinds of callers:
@@ -419,6 +420,11 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
   add('PUT', '/v1/admin/sms', (c) => { admin(c); return hub.saveSmsSetup(c.body); });
   add('DELETE', '/v1/admin/sms', (c) => { admin(c); return hub.removeSmsSetup(); });
   add('POST', '/v1/admin/sms/test', (c) => { admin(c); return hub.testSms((c.body as { mobile?: unknown } | null)?.mobile); });
+  // WhatsApp (src/whatsapp-bills.ts): codes, bills, the bill QR
+  add('GET', '/v1/admin/whatsapp', (c) => { admin(c); return hub.whatsapp.view(); });
+  add('PUT', '/v1/admin/whatsapp', (c) => { admin(c); return hub.whatsapp.save(c.body); });
+  add('DELETE', '/v1/admin/whatsapp', (c) => { admin(c); return hub.removeWhatsApp(); });
+  add('POST', '/v1/admin/whatsapp/test', (c) => { admin(c); return hub.whatsapp.test(c.body, base(c)); });
   add('GET', '/v1/admin/mail', (c) => { admin(c); return hub.mailSetup(); });
   add('PUT', '/v1/admin/mail', (c) => { admin(c); return hub.saveMailSetup(c.body); });
   add('DELETE', '/v1/admin/mail', (c) => { admin(c); return hub.removeMailSetup(); });
@@ -512,6 +518,58 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
     stream.pipe(c.res);
     return Symbol.for('handled');
   };
+  // ---- bills on WhatsApp (src/whatsapp-bills.ts): the POS sends a bill to a number, or keeps it here for its QR
+  add('GET', '/v1/pos/whatsapp', (c) => { device(c); return hub.whatsapp.forPos(); });
+  add('PUT', '/v1/pos/bills/:code', (c) => hub.whatsapp.putBill(device(c), c.params.code!, c.body), { maxBody: 256 * 1024 });
+  add('POST', '/v1/pos/bills/:code/whatsapp', (c) => hub.whatsapp.sendBill(device(c), c.params.code!, c.body, base(c)), { maxBody: 256 * 1024 });
+  // the customer's bill: a page and its PDF (the code is the only key), and the QR printed on the bill
+  const billLimit = limiter(() => 120);
+  add('GET', '/b/:code', (c) => {
+    billLimit(c.ip);
+    const pdf = /\.pdf$/i.test(c.params.code!);
+    const code = c.params.code!.replace(/\.pdf$/i, '');
+    let doc;
+    try { doc = hub.whatsapp.bill(code).doc; } catch (e) {
+      if (pdf || !(e instanceof HubError)) throw e;
+      c.res.writeHead(404, { ...PAGE_HEADERS, 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'", 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' });
+      c.res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bill not found</title><body style="font-family:system-ui;padding:2rem;text-align:center"><p>${e.message}</p></body>`);
+      return Symbol.for('handled');
+    }
+    const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Robots-Tag': 'noindex' };
+    if (pdf) {
+      const bytes = billPdf(doc);
+      c.res.writeHead(200, { ...headers, 'Content-Type': 'application/pdf', 'Content-Length': bytes.length, 'Content-Disposition': `inline; filename="Bill-${doc.billNo.replace(/[^A-Za-z0-9_-]+/g, '-')}.pdf"` });
+      c.res.end(bytes);
+    } else {
+      c.res.writeHead(200, { ...PAGE_HEADERS, ...headers, 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" });
+      c.res.end(billHtml(doc, `/b/${encodeURIComponent(code.toUpperCase())}.pdf`));
+    }
+    return Symbol.for('handled');
+  });
+  /** The QR on a printed bill: opens WhatsApp with "Send my bill <code>" to the hub's number (else the bill page). */
+  add('GET', '/wa/bill/:code', (c) => {
+    const code = c.params.code!.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+    const w = hub.whatsapp.forPos();
+    const to = w.qr && w.number ? `https://wa.me/${w.number}?text=${encodeURIComponent(`Send my bill ${code}`)}` : `/b/${code}`;
+    c.res.writeHead(302, { Location: to, 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+    c.res.end();
+    return Symbol.for('handled');
+  });
+  // incoming WhatsApp messages: Meta (signed) and MSG91 (a secret address)
+  add('GET', '/v1/whatsapp/meta', (c) => {
+    const challenge = hub.whatsapp.metaVerify(c.query);
+    c.res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    c.res.end(challenge);
+    return Symbol.for('handled');
+  });
+  add('POST', '/v1/whatsapp/meta', async (c) => hub.whatsapp.metaWebhook(await readRaw(c, 1024 * 1024), c.req.headers['x-hub-signature-256'], base(c)), { raw: true });
+  add('POST', '/v1/whatsapp/msg91/:secret', async (c) => {
+    const raw = (await readRaw(c, 1024 * 1024)).toString('utf8');
+    let body: unknown = null;
+    try { body = JSON.parse(raw); } catch { body = Object.fromEntries(new URLSearchParams(raw)); } // MSG91 may post a form
+    return hub.whatsapp.msg91Webhook(c.params.secret!, body, base(c));
+  }, { raw: true });
+
   add('GET', '/v1/pos/backups', (c) => ({ backups: hub.backups.list(device(c)) }));
   add('PUT', '/v1/pos/backups/:name', (c) => hub.backups.put(device(c), c.params.name!, c.req, String(c.req.headers['x-content-sha256'] ?? '').toLowerCase(), c.req.headers['content-length'] ? Number(c.req.headers['content-length']) : undefined), { raw: true });
   add('GET', '/v1/pos/backups/:name', (c) => { const f = hub.backups.open(device(c), c.params.name!); return sendFile(c, 'application/gzip', f.bytes, f.stream, f.sha256 ? { 'X-Content-SHA256': f.sha256 } : {}); });

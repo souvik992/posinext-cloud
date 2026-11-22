@@ -217,6 +217,8 @@
     </div>
     <h2>SMS codes (MSG91)</h2>
     <div class="card" id="smsCard"></div>
+    <h2>WhatsApp (codes and bills)</h2>
+    <div class="card" id="waCard"></div>
     <h2>Email (SMTP)</h2>
     <div class="card" id="mailCard"></div>
     <h2>Email templates</h2>
@@ -240,7 +242,7 @@
   const $ = (id) => document.getElementById(id);
   const keyStore = { get: () => { try { return sessionStorage.getItem('hubAdminKey') || ''; } catch { return ''; } },
     set: (v) => { try { v ? sessionStorage.setItem('hubAdminKey', v) : sessionStorage.removeItem('hubAdminKey'); } catch { /* private window */ } } };
-  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false, smsDirty = false, smsLoaded = false, mailDirty = false, mailLoaded = false;
+  let key = keyStore.get(), overview = null, timer = null, settingsDirty = false, checksDirty = false, smsDirty = false, smsLoaded = false, waDirty = false, waLoaded = false, mailDirty = false, mailLoaded = false;
   let health = null; // GET /health/deep: hosted outlets down, backups failing
   const ui = { orderStore: '', orderStatus: 'open', expanded: new Set(), links: new Map(), pausing: false, up: new Map(), licence: new Map(), sitePasswords: new Map() };
 
@@ -332,6 +334,7 @@
       else if (r.tab === 'brands' && !(document.activeElement && document.activeElement.closest('#brands'))) await renderBrands();
       if (!settingsDirty) fillSettings();
       if (!checksDirty) fillChecks();
+      if (!waLoaded) { waLoaded = true; fillWa(); }
       if (!smsLoaded) { smsLoaded = true; fillSms(); } // then only after a change here, so typing and messages are kept
       if (!mailLoaded) { mailLoaded = true; fillMail(); fillTemplates(); } // the same
       if (r.tab === 'settings' && !(document.activeElement && document.activeElement.closest('#upAccount'))) await renderAccount();
@@ -1021,6 +1024,81 @@
         h('span', { class: 'muted' }, s.configured ? chip('ok', 'Set up') : chip('warn', 'Not set up: codes are only logged'))),
       h('div', { class: 'hint' }, 'The auth key is kept in the hub database (and its backups); only its last 4 characters are shown here.'));
     $('smsCard').replaceChildren(form, s.configured ? test : null, h('div', { id: 'smsMsg' }));
+  }
+
+  // ------------------------------------------------------------ WhatsApp (Meta Cloud API or MSG91)
+  const waMsg = (text, ok) => $('waMsg').replaceChildren(text ? h('div', { class: ok ? 'box' : 'err' }, text) : '');
+  async function fillWa() {
+    let s;
+    try { s = await api('GET', '/v1/admin/whatsapp'); } catch (e) { $('waCard').replaceChildren(h('div', { class: 'err' }, e.message)); return; }
+    if (waDirty) return;
+    const provider = s.provider || 'meta';
+    const field = (id, label, input, hint, only) => h('div', { 'data-wa-only': only || null, hidden: only && only !== provider }, h('label', { for: id }, label), input, hint ? h('div', { class: 'hint' }, hint) : null, h('div', { class: 'err', 'data-wa-err': id }));
+    const secret = (id, ending, ph) => h('input', { id, type: 'password', autocomplete: 'off', placeholder: ending ? `Saved, ending ${ending}: leave empty to keep` : ph });
+    const select = (id, value, opts) => h('select', { id }, ...opts.map(([v, t]) => h('option', { value: v, selected: v === value }, t)));
+    const show = (p) => { for (const el of document.querySelectorAll('[data-wa-only]')) el.hidden = el.dataset.waOnly !== p; };
+    const ERR = { provider: 'waProvider', number: 'waNumber', language: 'waLang', phoneNumberId: 'waPhoneId', accessToken: 'waToken', appSecret: 'waSecret', authKey: 'waKey', otpTemplate: 'waOtp', billTemplate: 'waBill', codes: 'waCodes' };
+    const form = h('form', { oninput: () => { waDirty = true; }, onsubmit: async (ev) => {
+        ev.preventDefault(); waMsg('');
+        for (const el of document.querySelectorAll('[data-wa-err]')) el.textContent = '';
+        const p = $('waProvider').value;
+        try {
+          await api('PUT', '/v1/admin/whatsapp', { provider: p, number: $('waNumber').value, language: $('waLang').value, phoneNumberId: $('waPhoneId').value, accessToken: $('waToken').value, appSecret: $('waSecret').value, authKey: $('waKey').value,
+            codes: $('waCodes').value, otpTemplate: $('waOtp').value, billTemplate: $('waBill').value, billButton: $('waButton').checked });
+          await refresh(); waDirty = false; await fillWa(); waMsg('Saved and in use now. Send a test below.', true);
+        } catch (e) {
+          if (e.fields) for (const [k, m] of Object.entries(e.fields)) { const el = document.querySelector(`[data-wa-err="${ERR[k] || k}"]`); if (el) el.textContent = m; }
+          else waMsg(e.message);
+        }
+      } },
+      h('div', { class: 'hint', style: 'margin:0 0 10px' }, 'Business messages on WhatsApp use templates Meta approved. Codes: an authentication template (copy-code button). Bills: a utility template with a document header and the body "Thank you for visiting {{1}}. Your bill {{2}} for Rs. {{3}} is attached." ({{1}} store, {{2}} bill number, {{3}} amount). Meta charges for each template message; answers to a customer\'s own message (the bill QR) are free.'),
+      h('div', { class: 'grid' },
+        field('waProvider', 'Provider', select('waProvider', provider, [['meta', 'Meta Cloud API (direct)'], ['msg91', 'MSG91 WhatsApp']])),
+        field('waNumber', 'WhatsApp business number', h('input', { id: 'waNumber', value: s.number || '', placeholder: '919876543210', inputmode: 'numeric' }), 'With the country code. The bill QR opens a chat with this number.'),
+        field('waLang', 'Template language', h('input', { id: 'waLang', value: s.language || 'en', placeholder: 'en' }), 'As the templates were approved: en, en_US, hi, …'),
+        field('waPhoneId', 'Phone number id', h('input', { id: 'waPhoneId', value: s.phoneNumberId || '', placeholder: 'Meta for Developers > WhatsApp > API setup' }), null, 'meta'),
+        field('waToken', 'Permanent access token', secret('waToken', s.provider === 'meta' && s.tokenEnding, 'A system user token (Meta Business settings)'), null, 'meta'),
+        field('waSecret', 'App secret', h('input', { id: 'waSecret', type: 'password', autocomplete: 'off', placeholder: s.provider === 'meta' && s.appSecretSet ? 'Saved: leave empty to keep' : 'App settings > Basic > App secret' }), 'Needed for the bill QR: incoming messages are checked with it.', 'meta'),
+        field('waKey', 'MSG91 auth key', secret('waKey', s.provider === 'msg91' && s.authKeyEnding, 'MSG91 > API > Auth key'), null, 'msg91')),
+      h('h3', { style: 'margin-top:14px' }, 'Codes'),
+      h('div', { class: 'grid' },
+        field('waCodes', 'Send codes on WhatsApp', select('waCodes', s.codes || 'off', [['off', 'No: SMS only'], ['first', 'WhatsApp first, SMS if it fails'], ['only', 'WhatsApp only']]), 'Order OTP, website sign-in codes and mobile verification.'),
+        field('waOtp', 'Authentication template', h('input', { id: 'waOtp', value: s.otpTemplate || '', placeholder: 'e.g. login_code' }), '{{1}} is the code; the copy-code button gets it too.')),
+      h('h3', { style: 'margin-top:14px' }, 'Bills'),
+      h('div', { class: 'grid' },
+        field('waBill', 'Bill template', h('input', { id: 'waBill', value: s.billTemplate || '', placeholder: 'e.g. bill_pdf' }), 'Empty: the POS cannot send bills to a number (the QR still works).'),
+        h('div', {}, h('label', {}, h('input', { id: 'waButton', type: 'checkbox', checked: Boolean(s.billButton) }), ' The template has a "View bill" button'), h('div', { class: 'hint' }, `Its URL in the template: ${location.origin}/b/{{1}}`))),
+      h('div', { class: 'actions' },
+        h('button', { class: 'primary', type: 'submit' }, s.configured ? 'Save changes' : 'Save and use WhatsApp'),
+        s.configured ? h('button', { type: 'button', class: 'danger', onclick: async () => {
+          if (!confirm('Remove WhatsApp? Codes go by SMS again and bills can no longer be sent on WhatsApp.')) return;
+          try { await api('DELETE', '/v1/admin/whatsapp'); await refresh(); waDirty = false; await fillWa(); waMsg('Removed.', true); } catch (e) { waMsg(e.message); }
+        } }, 'Remove') : null,
+        h('span', { class: 'muted' }, s.configured ? chip('ok', 'Set up') : chip('warn', 'Not set up'))),
+      h('div', { class: 'hint' }, 'The token, app secret and auth key are kept in the hub database (and its backups); only their last 4 characters are shown here.'));
+    form.querySelector('#waProvider').addEventListener('change', (e) => show(e.target.value));
+    const hook = s.configured ? h('div', { class: 'box' },
+      h('b', {}, 'Incoming messages (bill QR): '),
+      s.provider === 'meta'
+        ? h('span', {}, 'in Meta for Developers > WhatsApp > Configuration, set the callback URL ', h('code', {}, location.origin + s.webhookPath), ' and the verify token ', h('code', {}, s.verifyToken), ', then subscribe to "messages".', s.appSecretSet ? '' : ' Enter the app secret above first.')
+        : h('span', {}, 'in MSG91 > WhatsApp > your number > Webhook (inbound), set ', h('code', {}, location.origin + s.webhookPath), '. Keep this address private: it is the check.')) : null;
+    const test = s.configured ? h('form', { class: 'row', style: 'margin-top:14px;align-items:flex-end', onsubmit: async (ev) => {
+        ev.preventDefault(); waMsg('');
+        const what = ev.submitter?.value || 'code';
+        for (const b of ev.target.querySelectorAll('button')) b.disabled = true;
+        try {
+          const r = await api('POST', '/v1/admin/whatsapp/test', { mobile: $('waTestMobile').value, what });
+          waMsg(what === 'code' ? `Sent. The WhatsApp message should arrive with the code ${r.code}.` : `Sent. A sample bill should arrive on WhatsApp (page: ${r.page}).`, true);
+        } catch (e) { waMsg(e.message); } finally { for (const b of ev.target.querySelectorAll('button')) b.disabled = false; }
+      } },
+      h('div', {}, h('label', { for: 'waTestMobile' }, 'Send a test to'), h('input', { id: 'waTestMobile', inputmode: 'numeric', placeholder: '9876543210', oninput: (e) => { let d = e.target.value.replace(/\D/g, ''); if (d.length > 10) d = d.replace(/^(0091|91|0)/, ''); e.target.value = d.slice(0, 10); } })),
+      h('button', { type: 'submit', value: 'code', disabled: !s.otpTemplate }, 'Test code'),
+      h('button', { type: 'submit', value: 'bill', disabled: !s.billTemplate }, 'Test bill')) : null;
+    const log = s.configured && s.log.length ? h('details', { style: 'margin-top:14px' }, h('summary', {}, `Last ${s.log.length} WhatsApp messages`),
+      h('div', { class: 'scroll' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'When'), h('th', {}, 'What'), h('th', {}, 'Store'), h('th', {}, 'To'), h('th', {}, 'Result'))),
+        h('tbody', {}, ...s.log.map((l) => h('tr', {}, h('td', {}, when(l.at)), h('td', {}, ({ code: 'Code', bill: 'Bill', qr: 'Bill QR answer', test: 'Test' })[l.kind] || l.kind), h('td', {}, l.store || '-'), h('td', {}, l.to || '-'),
+          h('td', {}, l.ok ? chip('ok', 'Sent') : chip('bad', 'Failed'), l.detail ? h('div', { class: 'hint' }, l.detail) : null))))))) : null;
+    $('waCard').replaceChildren(form, hook, test, h('div', { id: 'waMsg' }), log);
   }
 
   // ------------------------------------------------------------ Email (SMTP)

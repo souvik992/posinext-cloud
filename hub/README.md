@@ -199,6 +199,23 @@ with `channel: "app"` / `"website"`). Saved in the hub database (setting `checks
 The portal checks that send SMS can only be switched on once MSG91 is set up. Apps and pages ask `GET /v1/checks`, or
 read `checks` on the store page, to know which steps to show.
 
+### WhatsApp: codes and bills (admin page > Hub settings > WhatsApp; src/whatsapp.ts, src/whatsapp-bills.ts)
+
+One WhatsApp Business number, through **Meta's Cloud API** (phone number id + permanent access token + app secret)
+or **MSG91 WhatsApp** (auth key + its integrated number). Templates must be approved by Meta first.
+
+| What | How | Cost |
+|---|---|---|
+| Codes | "Send codes on WhatsApp": off, WhatsApp first (SMS when WhatsApp fails), or WhatsApp only. Every code the hub sends (order OTP, portal sign-in codes, mobile verification) goes through the authentication template (`{{1}}` = code, copy-code button). | per message (Meta) |
+| Bill to a number | The POS posts the bill: `POST /v1/pos/bills/:code/whatsapp` `{ mobile, bill }`. The utility template gets the PDF as its document header and `{{1}}` store, `{{2}}` bill number, `{{3}}` amount; optional URL button `https://<hub>/b/{{1}}`. | per message (Meta) |
+| Bill QR | The POS prints `https://<hub>/wa/bill/<code>`. It opens WhatsApp with "Send my bill <code>" to the hub's number; the webhook (`/v1/whatsapp/meta`, signed with the app secret, or `/v1/whatsapp/msg91/<secret>`) answers with the bill PDF (MSG91: its link). The bill comes up inside the POS's `bill.printed` sync event (`payload.share = { code, receipt }`). | free (the customer wrote first) |
+
+A bill's code (12 characters, A-Z and 2-9 without I and O) is made by the POS and is the only key: the page
+`/b/<code>` and PDF `/b/<code>.pdf` (80 mm, Courier, no fonts embedded) are public to whoever has it, never indexed,
+and kept 180 days. `GET /v1/pos/whatsapp` tells a POS whether bills can be sent and whether the QR is answered.
+Customers' numbers are only kept masked (the admin page shows the last 50 messages). MSG91's document header,
+button and incoming-message formats are not in its documentation: they are read loosely and still need a real test.
+
 | Route | |
 |---|---|
 | `GET /v1/checks?channel=portal\|app\|website` | `{channel, captcha, otp, emailVerification, mobileVerification, demoMode}` (CORS). `portal` is only true on the portal's address |

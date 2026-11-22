@@ -20,6 +20,7 @@ import type { Channel, HubSettings } from './settings.ts';
 import { Captchas } from './captcha.ts';
 import { msg91 } from './sms.ts';
 import type { SendSms } from './sms.ts';
+import { WhatsAppHub } from './whatsapp-bills.ts';
 import { checkSite, readSite } from './site.ts';
 import { osrmRoadKm } from './routing.ts';
 import { Accounts } from './accounts.ts';
@@ -58,6 +59,8 @@ export interface HubOptions {
   sendSms?: SendSms;
   /** The fetch used for MSG91 when it is set up from the admin page (tests). */
   smsFetch?: typeof fetch;
+  /** The fetch used for WhatsApp (Meta or MSG91; tests). */
+  waFetch?: typeof fetch;
   /** Added to the SMTP details saved on the admin page (tests: a plain stand-in server). */
   smtpOverrides?: Partial<SmtpOptions>;
   /** Road distance in km from a routing service, or null to use the store's road factor. Set: used instead of the routingUrl setting (tests). */
@@ -141,6 +144,8 @@ export class Hub {
   inventory: Inventory;
   /** P7-01: customer accounts (the portal) */
   accounts: Accounts;
+  /** WhatsApp: codes, bills sent to a number, the bill QR (src/whatsapp-bills.ts) */
+  whatsapp: WhatsAppHub;
   /** P7-02: licence keys signed by this cloud */
   licences: Licences;
   /** P8-08: email to customers (account codes, support replies): the server's mailer, else SMTP set up on the admin page. */
@@ -163,6 +168,7 @@ export class Hub {
     this.sync = new SalesSync(this.db, this.now);
     this.analytics = new Analytics(this.db, this.now, this.sync);
     this.inventory = new Inventory(this.db, this.now, this.sync, this.analytics);
+    this.whatsapp = new WhatsAppHub(this.db, this.now, this.sync, { fetch: opts.waFetch, log: opts.log });
     const log = opts.log ?? { info: () => undefined, warn: () => undefined };
     const signing = opts.licenceSigningKey === undefined ? null : typeof opts.licenceSigningKey === 'string' ? loadSigningKey(opts.licenceSigningKey) : opts.licenceSigningKey;
     this.licences = new Licences(this.db, this.now, this.sync, signing);
@@ -170,7 +176,7 @@ export class Hub {
     // every email goes through the mailer in use at that moment (the admin page can set SMTP up while the hub runs)
     const hub = this;
     this.mailer = { get kind() { return hub.mailSender().kind; }, send: (m: Mail) => hub.mailSender().send(m) };
-    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, templates: () => this.mailTemplates(), sms: () => this.smsSender(), log });
+    this.accounts = new Accounts(this.db, this.now, { mailer: this.mailer, allowLogMailer: opts.allowLogMailer, skipEmailVerify: opts.skipEmailVerify, checks: () => this.settings().checks, templates: () => this.mailTemplates(), sms: () => this.codeSender(), log });
     this.captchas = new Captchas(this.now);
   }
   /** The picture captcha (src/captcha.ts), asked where the security checks say (settings `checks.captcha`). */
@@ -261,7 +267,7 @@ export class Hub {
       const before = this.settings().checks;
       const checks = fullChecks(c.value.checks, before);
       // a check that sends SMS cannot work without a provider: switching it on would lock customers out
-      const sms = Boolean(this.smsSender() || this.devOtpOn() || this.opts.allowLogMailer);
+      const sms = Boolean(this.codeSender() || this.devOtpOn() || this.opts.allowLogMailer);
       for (const [k, ch] of SMS_CHECKS) {
         if (checks[k][ch] && !before[k][ch] && !sms) throw new HubError('SMS_NOT_SET_UP', 'Set up the SMS provider (MSG91) before switching on checks that send SMS codes.', 400, { fields: { [`checks.${k}.${ch}`]: 'Needs an SMS provider.' } });
       }
@@ -296,6 +302,9 @@ export class Hub {
     }
     return this.smsCache.send;
   }
+
+  /** Codes (order OTP, portal codes) go out here: WhatsApp when it is on for codes (SMS as the fallback), else SMS. */
+  codeSender(): SendSms | undefined { return this.whatsapp.codeSender(this.smsSender()); }
 
   smsSetup() {
     if (this.opts.sendSms) return { source: 'server' as const, configured: true };
@@ -332,7 +341,7 @@ export class Hub {
   removeSmsSetup() {
     this.smsOnServer();
     const c = this.settings().checks;
-    if (!this.devOtpOn() && !this.opts.allowLogMailer && SMS_CHECKS.some(([k, ch]) => c[k][ch])) {
+    if (!this.devOtpOn() && !this.opts.allowLogMailer && !(this.whatsapp.codesOn() && this.whatsapp.setup()?.codes === 'only') && SMS_CHECKS.some(([k, ch]) => c[k][ch])) {
       throw new HubError('SMS_IN_USE', 'Switch off the customer website checks that send SMS codes (OTP, mobile number verification) first: without SMS no one could sign in with them.', 409);
     }
     exec(this.db, "DELETE FROM setting WHERE key = 'sms'");
@@ -350,6 +359,15 @@ export class Hub {
     try { await send(mobile, `${code} is your PosiNext code. It expires in 10 minutes. Do not share it with anyone.`, code); }
     catch (e) { throw new HubError('SMS_FAILED', e instanceof Error ? e.message : String(e), 502); }
     return { sent: true, code };
+  }
+
+  /** Removes WhatsApp; refused while it is the only way codes go out and website checks that send codes are on. */
+  removeWhatsApp() {
+    const c = this.settings().checks;
+    if (this.whatsapp.codesOn() && !this.smsSender() && !this.devOtpOn() && !this.opts.allowLogMailer && SMS_CHECKS.some(([k, ch]) => c[k][ch])) {
+      throw new HubError('WHATSAPP_IN_USE', 'Codes only go out on WhatsApp and customer website checks that send codes are on: set up SMS or switch those checks off first.', 409);
+    }
+    return this.whatsapp.remove();
   }
 
   // ---------------------------------------------------------------- admin: email (SMTP) and email templates
@@ -609,7 +627,7 @@ export class Hub {
   adminOverview() {
     const stores = many<StoreRow>(this.db, 'SELECT * FROM store ORDER BY slug').map((s) => this.storeSummary(s));
     return {
-      hub: { devOtp: this.devOtpOn(), devOtpEnv: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.smsSender()), mailProvider: this.mailSender().kind !== 'log', routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
+      hub: { devOtp: this.devOtpOn(), devOtpEnv: Boolean(this.opts.devOtp), onlinePayments: Boolean(this.opts.onlinePayments), smsProvider: Boolean(this.codeSender()), whatsapp: this.whatsapp.forPos(), whatsappCodes: this.whatsapp.codesOn(), mailProvider: this.mailSender().kind !== 'log', routingOverridden: Boolean(this.opts.roadKm), now: this.now() },
       settings: this.settings(), stores,
       posTypes: Object.values(PRODUCTS).map((p) => ({ code: p.code, name: p.name, app: p.app })),
     };
@@ -863,7 +881,7 @@ export class Hub {
       ON CONFLICT(mobile) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0,
         sends = CASE WHEN ? THEN otp.sends + 1 ELSE 1 END, window_start = CASE WHEN ? THEN otp.window_start ELSE excluded.window_start END`,
       mobile, hash(mobile + code), now + OTP_TTL, now, inWindow ? 1 : 0, inWindow ? 1 : 0);
-    await (this.smsSender() ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`, code);
+    await (this.codeSender() ?? (async (m, t) => this.opts.log?.info('OTP (no SMS provider set up)', { mobile: m.slice(0, 2) + '******' + m.slice(-2), text: t.replace(/\d{6}/, '******') })))(mobile, `${code} is your code to confirm your order. It expires in 5 minutes.`, code);
     // demo mode (per channel, admin page) or HUB_DEV_OTP: the code is shown on screen
     return { sent: true, ...(this.devOtpOn() || checks.demoMode[ch] ? { devCode: code } : {}) };
   }
