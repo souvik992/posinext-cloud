@@ -3,6 +3,7 @@ import { normaliseHardwareId } from '../../packages/licensing/src/index.ts';
 import { exec, hash, one, tx } from './db.ts';
 import { HubError } from './hub.ts';
 import type { Hub } from './hub.ts';
+import { FREE_DAYS } from './licences.ts';
 import type { Grant } from './licences.ts';
 import { PRODUCTS, productOf, type ProductCode } from './products.ts';
 
@@ -11,6 +12,9 @@ import { PRODUCTS, productOf, type ProductCode } from './products.ts';
  * app's server sends the account's email and password, the PC's hardware id and the product:
  *   trial   a 30-day trial key, once per product per PC, per email and per mobile (trial_claim)
  *   signin  the key this account already has for this PC and product (a reinstall, or a paid plan)
+ * The Free plan (2026-11-22): after the trial the PC moves to a free key by itself (src/licences.ts sweepFree). An account
+ * whose trial is used (or that had keys before) and has no live key on any PC gets a free key for this PC at once;
+ * the Free plan is one PC per product, so with a live key on another PC it is refused.
  * The first activation makes the account's store for that PC and, when asked, pairs the outlet with this cloud (the
  * device key), so later renewals reach it through GET /v1/pos/licence.
  */
@@ -58,10 +62,13 @@ export class Activations {
     const existing = one<{ id: string; store_id: string }>(this.hub.db, `SELECT id, store_id FROM licence_grant WHERE account_id = ? AND hardware_id = ? AND product = ?
       AND revoked_at IS NULL AND expires_at > ? AND kind != 'demo' ORDER BY expires_at DESC LIMIT 1`, account.id, hardwareId, product, this.hub.now());
     if (existing) return this.answer(this.hub.licences.get(existing.id)!, input.link === true, outletName);
+    const hadKeys = one(this.hub.db, "SELECT 1 FROM licence_grant WHERE account_id = ? AND product = ? AND kind != 'demo' AND revoked_at IS NULL", account.id, product); // a trial reset by the admin (revoked) starts again
+    if (hadKeys && PRODUCTS[product].freeSeats) return this.freePlan(account, user.email, hardwareId, product, input.link === true, outletName);
     if (mode === 'signin') throw new HubError('NO_LICENCE', `This account has no ${app} licence for this PC yet. Start the free trial, or choose a plan in your account at portal.posinext.com.`, 404);
 
     const claims: Array<[string, string]> = [['hardware', hardwareId], ['email', user.email], ['phone', account.phone]];
     const taken = claims.find(([k, v]) => one(this.hub.db, 'SELECT 1 FROM trial_claim WHERE value_hash = ?', claimHash(product, k, v)));
+    if (taken && PRODUCTS[product].freeSeats) return this.freePlan(account, user.email, hardwareId, product, input.link === true, outletName);
     if (taken) {
       const what = taken[0] === 'hardware' ? 'This PC has' : taken[0] === 'email' ? 'This email has' : 'This mobile number has';
       throw new HubError('TRIAL_USED', `${what} already had a free ${app} trial. Choose a plan in your account at portal.posinext.com, or contact us.`, 409, { claim: taken[0] });
@@ -127,6 +134,17 @@ export class Activations {
     const st = this.hub.createStore(slug, outletName, product);
     exec(this.hub.db, 'INSERT INTO account_store (store_id, account_id, added_at) VALUES (?,?,?)', st.storeId, accountId, this.hub.now());
     return st.storeId;
+  }
+
+  /** The Free plan's key for this PC, unless the account has a live key for this product on another PC. */
+  private freePlan(account: { id: string; name: string }, email: string, hardwareId: string, product: ProductCode, link: boolean, outletName: string): Activation {
+    const app = PRODUCTS[product].app;
+    const other = one(this.hub.db, `SELECT 1 FROM licence_grant WHERE account_id = ? AND product = ? AND hardware_id != ? AND revoked_at IS NULL AND kind != 'demo' AND expires_at > ?`,
+      account.id, product, hardwareId, this.hub.now());
+    if (other) throw new HubError('FREE_PLAN_IN_USE', `Your account already uses ${app} on another PC. The Free plan is for one PC: choose a plan for more PCs in your account at portal.posinext.com, or contact us.`, 409);
+    const storeId = this.storeFor(account.id, hardwareId, product, outletName);
+    const g = this.hub.licences.issue({ storeId, accountId: account.id, hardwareId, kind: 'free', days: FREE_DAYS, seats: PRODUCTS[product].freeSeats!, licensee: account.name, by: `account:${email}`, product });
+    return this.answer(g, link, outletName);
   }
 
   private answer(g: Grant, link: boolean, outletName: string): Activation {

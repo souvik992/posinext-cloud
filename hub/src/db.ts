@@ -119,7 +119,7 @@ CREATE INDEX IF NOT EXISTS account_store_account ON account_store(account_id);
 -- once; a row is never deleted.
 CREATE TABLE IF NOT EXISTS licence_grant (
   id TEXT PRIMARY KEY, account_id TEXT REFERENCES account(id), store_id TEXT NOT NULL REFERENCES store(id), hardware_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('trial','paid','demo','manual')), licensee TEXT NOT NULL, seats_json TEXT NOT NULL, features_json TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('trial','paid','demo','manual','free')), licensee TEXT NOT NULL, seats_json TEXT NOT NULL, features_json TEXT NOT NULL,
   issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, key_text TEXT NOT NULL, revoked_at INTEGER, revoked_reason TEXT, created_by TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS licence_grant_store ON licence_grant(store_id, issued_at);
@@ -159,6 +159,28 @@ export function openHubDb(path: string): Db {
   // P8-02 (ADR-0007): which product a key is for (keys made before are DinePOS)
   const grantCols = new Set((db.prepare('PRAGMA table_info(licence_grant)').all() as Array<{ name: string }>).map((c) => c.name));
   if (!grantCols.has('product')) db.exec("ALTER TABLE licence_grant ADD COLUMN product TEXT NOT NULL DEFAULT 'fine_dine'");
+  // the Free plan (2026-11-22): keys of kind 'free'. SQLite cannot change a CHECK, so the table is copied once into one
+  // that allows it (same rows, same columns; the append-only trigger below is made again)
+  const grantSql = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'licence_grant'").get() as { sql: string }).sql;
+  if (!grantSql.includes("'free'")) {
+    const cols = 'id, account_id, store_id, hardware_id, kind, licensee, seats_json, features_json, issued_at, expires_at, key_text, revoked_at, revoked_reason, created_by, product';
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      db.exec(`BEGIN IMMEDIATE;
+CREATE TABLE licence_grant_free (
+  id TEXT PRIMARY KEY, account_id TEXT REFERENCES account(id), store_id TEXT NOT NULL REFERENCES store(id), hardware_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('trial','paid','demo','manual','free')), licensee TEXT NOT NULL, seats_json TEXT NOT NULL, features_json TEXT NOT NULL,
+  issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, key_text TEXT NOT NULL, revoked_at INTEGER, revoked_reason TEXT, created_by TEXT NOT NULL,
+  product TEXT NOT NULL DEFAULT 'fine_dine'
+);
+INSERT INTO licence_grant_free (${cols}) SELECT ${cols} FROM licence_grant;
+DROP TABLE licence_grant;
+ALTER TABLE licence_grant_free RENAME TO licence_grant;
+CREATE INDEX IF NOT EXISTS licence_grant_store ON licence_grant(store_id, issued_at);
+CREATE INDEX IF NOT EXISTS licence_grant_account ON licence_grant(account_id);
+COMMIT;`);
+    } catch (e) { try { db.exec('ROLLBACK'); } catch { /* not started */ } throw e; } finally { db.exec('PRAGMA foreign_keys = ON'); }
+  }
   // append-only: only a revoke may be recorded, once
   db.exec(`DROP TRIGGER IF EXISTS licence_grant_only_revoke;
 CREATE TRIGGER licence_grant_only_revoke BEFORE UPDATE ON licence_grant

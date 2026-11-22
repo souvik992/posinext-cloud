@@ -727,7 +727,7 @@
   /** P7-02: keys this cloud signed for the store, and a form to sign one (at most 400 days). */
   function grantsBox(slug, lic) {
     const box = h('div', { class: 'box' }, h('span', { class: 'muted' }, 'Loading cloud keys…'));
-    const KIND = { trial: 'Trial', paid: 'Paid', demo: 'Demo', manual: 'Made here' };
+    const KIND = { trial: 'Trial', paid: 'Paid', demo: 'Demo', manual: 'Made here', free: 'Free plan' };
     (async () => {
       let r;
       try { r = await api('GET', `/v1/admin/stores/${encodeURIComponent(slug)}/grants`); } catch (e) { box.replaceChildren(h('span', { class: 'err' }, e.message)); return; }

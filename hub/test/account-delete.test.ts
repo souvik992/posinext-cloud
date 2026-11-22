@@ -41,10 +41,10 @@ test('delete account: people and sign-ins go; outlets are unlinked; keys are kep
     assert.equal((await h.call('POST', '/v1/account/login', { body: a })).json.error.code, 'BAD_LOGIN');
     assert.equal((await h.call('POST', `/v1/admin/accounts/${id}/delete`, { admin: true, body: {} })).status, 404, 'once only');
 
-    // the email can sign up again, but the free trial was used
+    // the email can sign up again, but the free trial was used: the Free plan instead (2026-11-22)
     await account(h);
     const again = await h.call('POST', '/v1/activate', { body: { ...a, outletName: 'Spice Garden Salt Lake', hardwareId: HW, mode: 'trial' } });
-    assert.notEqual(again.status, 200);
+    assert.deepEqual([again.status, again.json.kind], [200, 'free']);
 
     // revokeKeys: the keys in use stop working
     const second = (await h.call('GET', '/v1/admin/accounts', { admin: true })).json.accounts[0];

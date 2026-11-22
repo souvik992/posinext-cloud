@@ -55,18 +55,19 @@ test('activation: one trial per PC, per email and per mobile', async () => {
   try {
     const a = await account(h);
     assert.equal((await activate(h, { ...a, mode: 'trial' })).status, 200);
-    // same account, another PC: the email has had its trial
+    // same account, another PC while the trial runs: the Free plan is one PC (2026-11-22; before, TRIAL_USED)
     const otherPc = await activate(h, { ...a, mode: 'trial', hardwareId: HW2 });
-    assert.deepEqual([otherPc.status, otherPc.json.error.code, otherPc.json.error.details.claim], [409, 'TRIAL_USED', 'email']);
-    assert.match(otherPc.json.error.message, /This email has already had a free DinePOS trial/);
-    // another account on the same PC
+    assert.deepEqual([otherPc.status, otherPc.json.error.code], [409, 'FREE_PLAN_IN_USE']);
+    assert.match(otherPc.json.error.message, /already uses DinePOS on another PC/);
+    // another account on the same PC: no second trial, the Free plan instead
     const b = await account(h, 'b@example.com', '9123456780');
     const samePc = await activate(h, { ...b, mode: 'trial' });
-    assert.deepEqual([samePc.json.error.code, samePc.json.error.details.claim], ['TRIAL_USED', 'hardware']);
-    // another account, another PC, the same mobile
+    assert.deepEqual([samePc.status, samePc.json.kind], [200, 'free']);
+    // another account, another PC, the same mobile: the Free plan too
     const c = await account(h, 'c@example.com', '+91 98765 43210');
     const samePhone = await activate(h, { ...c, mode: 'trial', hardwareId: HW2 });
-    assert.deepEqual([samePhone.json.error.code, samePhone.json.error.details.claim], ['TRIAL_USED', 'phone']);
+    assert.deepEqual([samePhone.status, samePhone.json.kind], [200, 'free']);
+    assert.equal(h.hub.db.prepare("SELECT COUNT(*) AS n FROM licence_grant WHERE kind = 'trial'").get()!.n, 1, 'still one trial');
     // a fresh account, PC and mobile still can
     const d = await account(h, 'd@example.com', '9000000001');
     assert.equal((await activate(h, { ...d, mode: 'trial', hardwareId: '5555-6666-7777-8888-9999' })).status, 200);
@@ -91,10 +92,10 @@ test('activation: each product has its own trial; keys say their product; a Tiff
     // signing in returns each product's own key
     assert.equal((await activate(h, { ...a, mode: 'signin', product: 'tiffin_qsr' })).json.key, qsr.json.key);
     assert.equal((await activate(h, { ...a, mode: 'signin' })).json.key, dine.json.key);
-    // a second Tiffin trial is refused, naming the product
+    // a second PC for quickPOS while its trial runs is refused, naming the product (the Free plan is one PC)
     const again = await activate(h, { ...a, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW2 });
-    assert.deepEqual([again.status, again.json.error.code], [409, 'TRIAL_USED']);
-    assert.match(again.json.error.message, /free quickPOS trial/);
+    assert.deepEqual([again.status, again.json.error.code], [409, 'FREE_PLAN_IN_USE']);
+    assert.match(again.json.error.message, /quickPOS on another PC/);
     // an unknown product is refused before anything is claimed
     assert.equal((await activate(h, { ...a, mode: 'trial', product: 'pizza_pos' })).status, 400);
     const claims = h.hub.db.prepare('SELECT product, COUNT(*) AS n FROM trial_claim GROUP BY product ORDER BY product').all();
@@ -138,7 +139,7 @@ test('activation: an admin trial reset lets the 30-day trial start again (the ol
     const tiffin = await activate(h, { ...a, mode: 'trial', product: 'tiffin_qsr' });
     assert.equal(tiffin.status, 200);
     assert.equal((await activate(h, { ...a, mode: 'trial' })).status, 200, 'same PC: the same trial key comes back');
-    assert.equal((await activate(h, { ...a, mode: 'trial', hardwareId: HW2 })).json.error.code, 'TRIAL_USED');
+    assert.equal((await activate(h, { ...a, mode: 'trial', hardwareId: HW2 })).json.error.code, 'FREE_PLAN_IN_USE');
 
     // admin key needed; unknown email refused
     assert.equal((await h.call('POST', '/v1/admin/trials/reset', { body: { email: a.email } })).status, 403);
@@ -159,12 +160,12 @@ test('activation: an admin trial reset lets the 30-day trial start again (the ol
     assert.equal(again.json.expiresAt, h.clock.t + 30 * 86_400_000);
     const lic = (await h.call('GET', '/v1/admin/stores/' + first.json.store.slug + '/grants', { admin: true })).json.grants as Array<{ key: string; revokedReason: string | null }>;
     assert.equal(lic.find((g) => g.key === first.json.key)!.revokedReason, 'trial reset by admin');
-    // Tiffin POS was not reset: its trial is still used
-    assert.equal((await activate(h, { ...a, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW2 })).json.error.code, 'TRIAL_USED');
+    // Tiffin POS was not reset: its trial still runs on the first PC
+    assert.equal((await activate(h, { ...a, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW2 })).json.error.code, 'FREE_PLAN_IN_USE');
 
     // a PC on its own (another account used it): only that PC's record goes
     const b = await account(h, 'ravi@chaipoint.in', '9811122233');
-    assert.equal((await activate(h, { ...b, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW })).json.error.code, 'TRIAL_USED', 'this PC had a Tiffin trial');
+    assert.equal((await activate(h, { ...b, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW })).json.kind, 'free', 'this PC had a Tiffin trial: the Free plan instead');
     const pc = await h.call('POST', '/v1/admin/trials/reset', { admin: true, body: { hardwareId: HW, product: 'tiffin_qsr' } });
     assert.equal(pc.status, 200);
     assert.equal((await activate(h, { ...b, mode: 'trial', product: 'tiffin_qsr', hardwareId: HW })).status, 200);

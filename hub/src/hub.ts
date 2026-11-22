@@ -1123,8 +1123,17 @@ export class Hub {
     }
     exec(this.db, 'DELETE FROM order_attempt WHERE at < ?', now - ATTEMPT_DAYS * 86_400_000);
     this.accounts.sweep();
+    // the Free plan: trials ending, paid keys ended and free keys ending get a free key (src/licences.ts), every 10 minutes
+    if (now - this.freeSweptAt >= 10 * 60_000) {
+      this.freeSweptAt = now;
+      try {
+        const made = this.licences.sweepFree();
+        if (made) this.opts.log?.info('free plan keys made', { made });
+      } catch (e) { this.opts.log?.warn('free plan sweep failed', String(e)); }
+    }
     return n;
   }
+  private freeSweptAt = 0;
 
   // ---------------------------------------------------------------- helpers
 

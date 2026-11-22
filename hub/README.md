@@ -296,6 +296,20 @@ missing = `fine_dine`, for DinePOS builds before P8-02):
 - The same password check as the portal (wrong passwords lock the email for 15 minutes; an unverified email gets a
   new code).
 
+### Free plan (2026-11-22)
+
+Every feature on one PC per product, for as long as the shop uses it (`freeSeats` in `src/products.ts`: the trial's
+seats; Fine Dine and QSR only). Keys of kind `free` last 365 days and carry no `trial` mark, so the apps show them as a
+licence. `Licences.sweepFree` (from `hub.sweep()`, every 10 minutes) signs one into the outlet's licence slot, which
+the app installs at its hourly renewal, when the newest key for that outlet, PC and product is:
+- a trial with 3 days or less left (before the apps' 2-day trial warning), or already ended;
+- a paid key that has ended (the shop keeps billing on one PC instead of locking);
+- a free key with 30 days or less left (before the apps' 15-day warning).
+Revoked, manual and demo keys, products without `freeSeats` and suspended, closed or deleted accounts are left alone.
+At activation, an account whose trial is used (or with an unrevoked key before) gets a free key for this PC at once,
+unless it has a live key for that product on another PC (`FREE_PLAN_IN_USE`). A brand-new account still starts with
+the 30-day trial. The `licence_grant` table is copied once at start into one whose CHECK allows `free`.
+
 ## Windows downloads (P8-04)
 
 The portal's downloads (`src/downloads.ts`; ADR-0007): for **Fine Dine** the DinePOS installer and the Table QR and

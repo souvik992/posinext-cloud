@@ -6,7 +6,7 @@ import { exec, many, one, tx } from './db.ts';
 import type { Db } from './db.ts';
 import { HubError } from './hub.ts';
 import type { SalesSync } from './sync.ts';
-import { DEFAULT_PRODUCT, type ProductCode } from './products.ts';
+import { DEFAULT_PRODUCT, PRODUCTS, type ProductCode } from './products.ts';
 
 /**
  * Licence keys signed by PosiNext Cloud itself (P7-02, ADR-0006). The cloud holds its own Ed25519 key (`kid: "cloud"`);
@@ -18,8 +18,12 @@ import { DEFAULT_PRODUCT, type ProductCode } from './products.ts';
 
 export const CLOUD_KEY_MAX_DAYS = 400;
 const DAY = 86_400_000;
+/** The Free plan's key lasts a year; it is renewed FREE_RENEW_DAYS before its end (before the apps' 15-day warning). */
+export const FREE_DAYS = 365, FREE_RENEW_DAYS = 30;
+/** A trial moves to the Free plan this many days before it ends (before the apps' 2-day trial warning). */
+export const FREE_AFTER_TRIAL_DAYS = 3;
 
-export type GrantKind = 'trial' | 'paid' | 'demo' | 'manual';
+export type GrantKind = 'trial' | 'paid' | 'demo' | 'manual' | 'free';
 export interface Seats { terminals: number; captains: number; kds: number }
 export interface GrantInput {
   storeId: string;
@@ -99,6 +103,34 @@ export class Licences {
   forAccount(accountId: string): Array<Grant & { storeName: string }> {
     return many<GrantRow & { store_name: string }>(this.db, `SELECT g.*, s.name AS store_name FROM licence_grant g JOIN store s ON s.id = g.store_id
       WHERE g.account_id = ? AND g.kind != 'demo' ORDER BY g.issued_at DESC LIMIT 200`, accountId).map((r) => ({ ...toGrant(r), storeName: r.store_name }));
+  }
+
+  /**
+   * The Free plan (2026-11-22). For each PC of a portal account whose newest key (per outlet, PC and product) is
+   *  - a trial with FREE_AFTER_TRIAL_DAYS days or less left (or already ended),
+   *  - a paid key that has ended (the shop keeps billing on one PC instead of locking), or
+   *  - a free key with FREE_RENEW_DAYS days or less left,
+   * a new free key (FREE_DAYS, the product's free seats, every feature) is signed and put in the outlet's slot; the
+   * app installs it at its next hourly renewal (it ends later than the key it has). Revoked keys, manual and demo keys,
+   * closed, suspended or deleted accounts and products without a Free plan are left alone. Returns how many keys were made.
+   */
+  sweepFree(): number {
+    if (!this.key) return 0;
+    const now = this.now();
+    const due = many<GrantRow>(this.db, `SELECT g.* FROM licence_grant g JOIN account a ON a.id = g.account_id
+      WHERE g.revoked_at IS NULL AND a.status NOT IN ('suspended','closed','deleted')
+        AND ((g.kind = 'trial' AND g.expires_at <= ?) OR (g.kind = 'paid' AND g.expires_at <= ?) OR (g.kind = 'free' AND g.expires_at <= ?))
+        AND NOT EXISTS (SELECT 1 FROM licence_grant x WHERE x.store_id = g.store_id AND x.hardware_id = g.hardware_id AND x.product = g.product
+          AND x.revoked_at IS NULL AND x.kind != 'demo' AND x.id != g.id AND x.expires_at >= g.expires_at)`,
+      now + FREE_AFTER_TRIAL_DAYS * DAY, now, now + FREE_RENEW_DAYS * DAY);
+    let made = 0;
+    for (const g of due) {
+      const seats = PRODUCTS[g.product]?.freeSeats;
+      if (!seats) continue;
+      this.issue({ storeId: g.store_id, accountId: g.account_id, hardwareId: g.hardware_id, kind: 'free', days: FREE_DAYS, seats, licensee: g.licensee, product: g.product, by: 'cloud:free-plan' });
+      made++;
+    }
+    return made;
   }
 
   forStore(storeId: string): Grant[] {
