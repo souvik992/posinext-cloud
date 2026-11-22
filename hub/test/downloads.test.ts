@@ -50,7 +50,7 @@ test('downloads: the newest build of each app and add-on, per product; an add-on
     const r = await h.call('GET', '/v1/downloads');
     assert.equal(r.status, 200);
     const by = Object.fromEntries((r.json.downloads as Array<{ id: string }>).map((d) => [d.id, d])) as Record<string, Record<string, unknown>>;
-    assert.deepEqual(Object.keys(by), ['dinepos', 'dinepos-tableqr', 'dinepos-kitchen', 'dinepos-captain', 'tiffin', 'tiffin-ods', 'posinext-grocery', 'posinext-grocery-edc', 'posinext-apparel', 'posinext-apparel-edc', 'posinext-pharmacy', 'posinext-pharmacy-edc']);
+    assert.deepEqual(Object.keys(by), ['dinepos', 'dinepos-tableqr', 'dinepos-kitchen', 'dinepos-captain', 'tiffin', 'tiffin-ods', 'tiffin-android', 'tiffin-android-32', 'tiffin-ods-android', 'tiffin-edc-android', 'posinext-grocery', 'posinext-grocery-edc', 'posinext-apparel', 'posinext-apparel-edc', 'posinext-pharmacy', 'posinext-pharmacy-edc']);
     assert.deepEqual([by['dinepos-kitchen']!.kind, by['dinepos-kitchen']!.product, by['dinepos-kitchen']!.available], ['addon', 'fine_dine', false], 'KDS: listed, not built yet');
     assert.deepEqual([by['dinepos-captain']!.kind, by['dinepos-captain']!.product, by['dinepos-captain']!.available], ['addon', 'fine_dine', false], 'Captain APK: listed, not built yet');
     assert.deepEqual([by.dinepos!.version, by.dinepos!.build, by.dinepos!.product, by.dinepos!.app], ['0.1.7', '12', 'fine_dine', 'DinePOS']);
@@ -85,7 +85,7 @@ test('downloads: GitHub down keeps the last list (also after a restart); nothing
   const e = await startHub(undefined, undefined, undefined, { githubFetch: empty.f });
   try {
     const r = await e.call('GET', '/v1/downloads');
-    assert.deepEqual((r.json.downloads as Array<{ available: boolean; version: unknown }>).map((d) => [d.available, d.version]), Array.from({ length: 12 }, () => [false, null]));
+    assert.deepEqual((r.json.downloads as Array<{ available: boolean; version: unknown }>).map((d) => [d.available, d.version]), Array.from({ length: 16 }, () => [false, null]));
   } finally { await e.close(); cleanup(e.dir); }
 });
 
@@ -144,9 +144,16 @@ test('P8-11: an uploaded installer is offered instead of GitHub and streamed fro
     const a = await fetch(`${h.base}/v1/account/downloads/dinepos-captain`, { headers: { cookie } });
     assert.equal(a.headers.get('content-type'), 'application/vnd.android.package-archive');
     assert.ok(Buffer.from(await a.arrayBuffer()).equals(apk));
+    // quickPOS for Android: each processor type has its own item; an Android add-on is a .tiffinaddon (zip)
+    assert.equal((await upload(h, 'tiffin-android', 'quickPOS-0.3.16-armeabi-v7a-release.apk', apk)).status, 400, 'the 32-bit APK has its own item');
+    const addon = randomBytes(3_000);
+    assert.equal((await upload(h, 'tiffin-ods-android', 'quickPOS-ODS-1.0.18.tiffinaddon', addon)).status, 200);
+    const od = await fetch(`${h.base}/v1/account/downloads/tiffin-ods-android`, { headers: { cookie } });
+    assert.equal(od.headers.get('content-type'), 'application/zip');
+    assert.ok(Buffer.from(await od.arrayBuffer()).equals(addon));
     const stats = await h.call('GET', '/v1/admin/downloads', { admin: true });
-    assert.deepEqual((stats.json.stats as Array<{ item: string; version: string }>).map((s) => [s.item, s.version]).sort(), [['dinepos', '0.1.8'], ['dinepos-captain', '0.1.0']]);
-    assert.deepEqual((stats.json.files as Array<{ fileName: string }>).map((f) => f.fileName).sort(), ['DinePOS-Captain-0.1.0.apk', 'DinePOS-Setup-0.1.8.exe']);
+    assert.deepEqual((stats.json.stats as Array<{ item: string; version: string }>).map((s) => [s.item, s.version]).sort(), [['dinepos', '0.1.8'], ['dinepos-captain', '0.1.0'], ['tiffin-ods-android', '1.0.18']]);
+    assert.deepEqual((stats.json.files as Array<{ fileName: string }>).map((f) => f.fileName).sort(), ['DinePOS-Captain-0.1.0.apk', 'DinePOS-Setup-0.1.8.exe', 'quickPOS-ODS-1.0.18.tiffinaddon']);
 
     // the file gone from the disk: a clear answer, not a broken download
     rmSync(join(files, 'dinepos', 'DinePOS-Setup-0.1.8.exe'));
