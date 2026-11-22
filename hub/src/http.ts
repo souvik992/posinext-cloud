@@ -315,7 +315,7 @@ export function createHubServer(hub: Hub, o: HttpOptions = {}): http.Server & { 
     const stream = downloads.open(d);
     if (!stream) throw new HubError('NOT_AVAILABLE', 'This download is missing on the server. Please try again later or open a support ticket.', 503);
     c.res.writeHead(200, {
-      'Content-Type': d.fileName.endsWith('.apk') ? 'application/vnd.android.package-archive' : d.fileName.endsWith('.tiffinaddon') ? 'application/zip' : 'application/vnd.microsoft.portable-executable', 'Content-Length': d.size, 'Cache-Control': 'no-store',
+      'Content-Type': d.fileName.endsWith('.apk') ? 'application/vnd.android.package-archive' : d.fileName.endsWith('.tiffinaddon') ? 'application/zip' : d.fileName.endsWith('.dmg') ? 'application/x-apple-diskimage' : 'application/vnd.microsoft.portable-executable', 'Content-Length': d.size, 'Cache-Control': 'no-store',
       'Content-Disposition': `attachment; filename="${d.fileName}"`, 'X-Content-Type-Options': 'nosniff', 'X-Content-SHA256': d.sha256,
     });
     stream.pipe(c.res);
